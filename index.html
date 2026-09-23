@@ -285,6 +285,13 @@ tbody tr:last-child td{border-bottom:none}
 /* ===== TODO (cose da fare) ===== */
 .todo-panel{border:1.5px solid var(--accent);box-shadow:0 8px 30px -12px rgba(184,122,47,.35)}
 .todo-panel .panel-head{background:linear-gradient(180deg,var(--accent-bg),var(--panel2))}
+
+/* ===== CRUSCOTTO — griglia a quadroni ===== */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.dash-tile{display:flex;flex-direction:column}
+.tile-alert{border:1.5px solid var(--brass);box-shadow:0 8px 30px -12px rgba(192,138,62,.3)}
+.tile-alert .panel-head{background:linear-gradient(180deg,var(--brass-bg),var(--panel2))}
+@media(max-width:960px){.dash-grid{grid-template-columns:1fr}}
 .todo-add{display:flex;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
 .todo-add input#todoText{flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line2);border-radius:10px;padding:11px 14px;font-family:var(--mono);font-size:14px;color:var(--ink)}
 .todo-add input#todoText:focus{outline:none;border-color:var(--accent)}
@@ -321,7 +328,7 @@ tbody tr:last-child td{border-bottom:none}
 .dash-area-filter button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ===== ALERT SUMMARY (minimal) ===== */
-.alert-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:18px}
+.alert-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:0 8px 8px}
 .alert-sum-card{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--c,var(--accent));border-radius:12px;padding:14px 16px;cursor:pointer;transition:.16s;box-shadow:var(--shadow)}
 .alert-sum-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 .alert-sum-card .asc-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -509,28 +516,28 @@ tbody tr:last-child td{border-bottom:none}
     <div class="panel-body scroll" id="todoList" style="max-height:340px"></div>
   </div>
 
-  <!-- FASCIA 1b: DUE RIQUADRI AFFIANCATI -->
-  <div class="grid2" style="margin-top:18px">
-    <div class="panel">
+  <!-- FASCIA 2: GRIGLIA A QUADRONI — alert e comunicazioni in evidenza, poi il resto -->
+  <div class="dash-grid" style="margin-top:18px">
+    <div class="panel dash-tile tile-alert">
+      <div class="panel-head"><h3>🚩 Richieste inevase</h3><span class="count" id="inevaseCount">—</span></div>
+      <div class="panel-body scroll" id="inevaseList" style="max-height:250px"></div>
+      <div class="alert-summary" id="alertSummary"></div>
+    </div>
+    <div class="panel dash-tile">
+      <div class="panel-head"><h3>💬 Comunicazioni interne</h3><span class="count">Studio</span></div>
+      <div class="panel-body" id="chatGeneraleMount"></div>
+    </div>
+    <div class="panel dash-tile">
       <div class="panel-head"><h3>⚠️ Clienti da attenzionare</h3><span class="count" id="criticiCount">—</span>
         <button class="btn" id="btnPrintCritici" style="margin-left:auto;padding:5px 9px;font-size:11px">🖨</button>
       </div>
-      <div class="panel-body scroll" id="criticiList" style="max-height:300px"></div>
+      <div class="panel-body scroll" id="criticiList" style="max-height:280px"></div>
     </div>
-    <div class="panel">
+    <div class="panel dash-tile">
       <div class="panel-head"><h3>⏱ Prossime scadenze</h3><span class="count" id="dashScadCount">—</span></div>
-      <div class="panel-body scroll" id="dashScad" style="max-height:300px"></div>
+      <div class="dash-area-filter hide" id="dashAreaFilter"></div>
+      <div class="panel-body scroll" id="dashScad" style="max-height:280px"></div>
     </div>
-  </div>
-  <div class="dash-area-filter hide" id="dashAreaFilter"></div>
-
-  <!-- FASCIA 3: RIEPILOGO ALERT MINIMAL -->
-  <div class="alert-summary" id="alertSummary"></div>
-
-  <!-- COMUNICAZIONI INTERNE (chat generale di studio) -->
-  <div class="panel" style="margin-top:18px">
-    <div class="panel-head"><h3>💬 Comunicazioni interne</h3><span class="count">Studio</span></div>
-    <div class="panel-body" id="chatGeneraleMount"></div>
   </div>
 </section>
 
@@ -1009,7 +1016,7 @@ function clientObj(raw){
     esterometro:fl(raw.esterometro), cassaProf:fl(raw.cassaProf), intrastat:fl(raw.intrastat),
     adempManuali, // array di {desc,data,area,resp,done}
     altriAdemp:raw.altriAdemp||'',
-    contab, iva:liq.periodi, ivaAnnuale:liq.ivaAnnuale,
+    contab, iva:liq.periodi, ivaAnnuale:liq.ivaAnnuale, contabLastUpdate:ctb.lastUpdate||'',
     notes:STATE.note.filter(n=>n.nome===nome)
   };
 }
@@ -1025,7 +1032,7 @@ function ivaPeriods(c){
 
 /* ---------- SALVATAGGI ---------- */
 function buildContabPayload(c){
-  const p={nome:c.nome,resp:c.resp};
+  const p={nome:c.nome,resp:c.resp,lastUpdate:new Date().toISOString()};
   Object.keys(CONTAB_COLS).forEach(k=>p[k]=qStr(c.contab[k]));
   STATE.contab[c.nome]=p; return p;
 }
@@ -1034,8 +1041,9 @@ async function saveContab(c){ await api('upsertContab',buildContabPayload(c)); }
 // cosi' due collaboratori che lavorano sullo stesso cliente non si sovrascrivono a vicenda
 function patchContabColumn(c,col){
   const cur=STATE.contab[c.nome]||{nome:c.nome,resp:c.resp};
-  cur[col]=qStr(c.contab[col]); STATE.contab[c.nome]=cur;
-  return {nome:c.nome,[col]:cur[col]};
+  const lu=new Date().toISOString();
+  cur[col]=qStr(c.contab[col]); cur.lastUpdate=lu; STATE.contab[c.nome]=cur;
+  return {nome:c.nome,[col]:cur[col],lastUpdate:lu};
 }
 function buildLiqIvaPayload(c){
   STATE.liqiva[c.nome]={periodi:c.iva,ivaAnnuale:c.ivaAnnuale,resp:c.resp};
@@ -1136,7 +1144,7 @@ function customScadenze(){ return STATE.scadenze.map(s=>({...s,auto:false,stato:
 // Adempimenti inseriti manualmente nella scheda cliente (NON sono default automatici)
 function manualClientScadenze(){
   const out=[];
-  activeClients().forEach(c=>{
+  allClients().forEach(c=>{
     (c.adempManuali||[]).forEach((a,i)=>{ if(a.data) out.push({id:'man-'+c.nome+'-'+i,auto:true,manual:true,manIdx:i,nome:c.nome,desc:a.desc||'Adempimento',data:a.data,resp:a.resp||c.resp,kind:'manuale',area:a.area||'altro',stato:a.done?2:0,note:a.note||''}); });
   });
   return out;
@@ -1255,7 +1263,7 @@ function clientRisk(c){
 }
 function riskLevel(s){ if(s>=60)return {cls:'rk-high',ic:'🔴',lab:'Alto'}; if(s>=30)return {cls:'rk-mid',ic:'🟠',lab:'Medio'}; if(s>0)return {cls:'rk-low',ic:'🟡',lab:'Basso'}; return {cls:'rk-ok',ic:'🟢',lab:'OK'}; }
 function clientiCritici(){
-  return activeClients().map(c=>({c,...clientRisk(c)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+  return allClients().map(c=>({c,...clientRisk(c)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
 }
 
 /* ============================================================
@@ -1282,6 +1290,15 @@ function legendHTML(){ return `<span><span class="sq" style="background:var(--bg
 ============================================================ */
 function pendingScadenze(){ return allScadenze().filter(s=>s.stato!==2).sort((a,b)=>{const da=daysTo(a.data),db=daysTo(b.data);if(da===null)return 1;if(db===null)return -1;return da-db;}); }
 function allAlerts(){ const out=[]; allClients().forEach(c=>c.notes.forEach(n=>out.push({...n,cliente:c.nome,ico:clientIco(c),area:n.area||'altro'}))); return out.sort((a,b)=>{const ad=!!a.done,bd=!!b.done;if(ad!==bd)return ad?1:-1;const o={doc:0,info:1,nota:2};return (o[a.tipo]??9)-(o[b.tipo]??9);}); }
+// Richieste inevase: solo documenti/info mancanti (non le annotazioni libere), le più vecchie prima
+function parseNoteData(s){ if(!s)return null; const p=String(s).split('/'); if(p.length!==3)return null; const [d,m,y]=p.map(Number); if(!d||!m||!y)return null; const dt=new Date(y,m-1,d); return isNaN(dt)?null:dt; }
+function richiesteInevase(){
+  return allAlerts().filter(a=>!a.done && (a.tipo==='doc'||a.tipo==='info')).sort((a,b)=>{
+    const da=parseNoteData(a.data), db=parseNoteData(b.data);
+    if(!da&&!db)return 0; if(!da)return 1; if(!db)return -1;
+    return da-db;
+  });
+}
 
 /* ============================================================ DASHBOARD */
 let dashArea='all';      // filtro area scadenze nel cruscotto
@@ -1292,6 +1309,11 @@ function renderDashboard(){
   renderTodo();
   renderCritici();
   renderChatContesto(document.getElementById('chatGeneraleMount'),'generale','studio','','');
+  // ---- RICHIESTE INEVASE (documenti/info mancanti, le più vecchie prima) ----
+  const inevase=richiesteInevase();
+  document.getElementById('inevaseCount').textContent=inevase.length+(inevase.length===1?' aperta':' aperte');
+  document.getElementById('inevaseList').innerHTML=inevase.length?inevase.slice(0,20).map(a=>`<div class="item" data-gocli="${esc(a.cliente)}" style="cursor:pointer"><span class="ni" style="font-size:16px;flex-shrink:0">${NOTE_TYPES[a.tipo].ic}</span><div class="body"><div class="t1">${esc(a.testo)}</div><div class="t2">${a.ico||''} ${esc(a.cliente)}${a.data?' · dal '+esc(a.data):''}${a.resp?' · 👤 '+esc(a.resp):''}</div></div></div>`).join(''):emptyState('Nessuna richiesta in sospeso — tutto arrivato','🎉');
+  document.querySelectorAll('#inevaseList [data-gocli]').forEach(el=>el.onclick=()=>openLavorazione(el.dataset.gocli,'note'));
   // ---- SCADENZE (fascia 2) ----
   let pend=pendingScadenze();
   if(dashArea!=='all') pend=pend.filter(s=>s.area===dashArea);
@@ -1461,13 +1483,33 @@ function renderClienti(){
 /* ============================================================ CONTABILITA */
 let contabFilter='all',contabQuery='',contabCol='fa',contabView='riepilogo';
 function setContabFilter(f){contabFilter=f||'all';document.querySelectorAll('[data-conf]').forEach(c=>c.classList.toggle('on',c.dataset.conf===contabFilter));renderContab();}
+// priorita' di lavorazione: ordinarie prima, poi semplificate, poi forfetari, poi il resto
+const REGIME_PRIORITY={'Ordinaria':0,'Semplificata':1,'Regime forfetario':2};
+function regimePriority(r){ const p=REGIME_PRIORITY[r]; return p===undefined?3:p; }
+// giorni trascorsi dall'ultimo aggiornamento contabile del cliente (null se non ancora registrato)
+function daysStale(c){
+  if(!c.contabLastUpdate) return null;
+  const d=Math.floor((Date.now()-new Date(c.contabLastUpdate).getTime())/86400000);
+  return d>=0?d:0;
+}
+function fmtGiorni(n){ if(n===null)return '—'; if(n===0)return 'oggi'; if(n===1)return '1 giorno'; return n+' giorni'; }
 function contabClientList(){
-  return activeClients().filter(c=>{
+  const list=activeClients().filter(c=>{
     if(contabQuery){if(!c.nome.toLowerCase().includes(contabQuery.toLowerCase()))return false;}
     if(contabFilter==='incompleti'){const cp=contabOverallPct(c);if(cp===null||cp>=100)return false;}
     else if(contabFilter==='bloccati'){if(!contabHasBlocco(c))return false;}
     else if(['Regime forfetario','Semplificata','Ordinaria'].includes(contabFilter)&&c.regime!==contabFilter)return false;
     return true;
+  });
+  // priorita' regime, poi chi e' fermo da piu' tempo (i clienti senza dati vanno in fondo al loro gruppo)
+  return list.sort((a,b)=>{
+    const rp=regimePriority(a.regime)-regimePriority(b.regime); if(rp)return rp;
+    const sa=daysStale(a), sb=daysStale(b);
+    if(sa===null&&sb===null) return a.nome.localeCompare(b.nome);
+    if(sa===null) return 1;
+    if(sb===null) return -1;
+    if(sb!==sa) return sb-sa;
+    return a.nome.localeCompare(b.nome);
   });
 }
 function renderContab(){
@@ -1484,9 +1526,10 @@ function renderContabRiepilogo(){
   const list=contabClientList();
   let h=`<thead><tr><th>Cliente</th><th>Regime</th><th class="center">Resp.</th>`;
   QUARTERS.forEach(q=>h+=`<th class="center">${q}</th>`);
-  h+=`<th class="center">Complessivo</th><th class="center">Ademp.</th><th class="center">🚩</th><th class="center"></th></tr></thead><tbody>`;
+  h+=`<th class="center">Complessivo</th><th class="center">Fermo da</th><th class="center">Richieste</th><th class="center"></th></tr></thead><tbody>`;
   list.forEach(c=>{
     const overall=contabOverallPct(c); const on=openNotes(c).length; const cols=contabActiveCols(c);
+    const stale=daysStale(c); const staleWarn=stale!==null&&stale>=14;
     h+=`<tr data-row="${esc(c.nome)}" style="cursor:pointer"><td><div class="cli-name">${clientIco(c)} ${esc(c.nome)}</div><div class="cli-meta">${esc(c.tipologia||'')}</div></td><td>${regimePill(c.regime)}</td><td class="center"><span class="muted" style="font-size:12px">${esc(c.resp||'—')}</span></td>`;
     QUARTERS.forEach((q,i)=>{
       const pc=contabQuarterPct(c,i);
@@ -1495,7 +1538,7 @@ function renderContabRiepilogo(){
         h+=`<td class="center"><div class="qpct"><div class="qpct-ring" style="--p:${pc};--col:${blk?'var(--red)':progColor(pc)}"><span>${pc}</span></div></div></td>`; }
     });
     h+=`<td class="center"><div class="prog"><div class="bar"><div class="fill" style="width:${overall||0}%;background:${progColor(overall||0)}"></div></div><span class="pc">${overall===null?'—':overall+'%'}</span></div></td>`;
-    h+=`<td class="center"><span class="muted" style="font-size:11px">${cols.length} attivi</span></td><td class="center"><span class="flag ${on?'has':''}" data-flag="${esc(c.nome)}">${on?'🚩 '+on:'🏳️'}</span></td><td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
+    h+=`<td class="center"><span class="muted" style="font-size:11.5px;${staleWarn?'color:var(--red);font-weight:700':''}">${fmtGiorni(stale)}</span></td><td class="center"><span class="flag ${on?'has':''}" data-flag="${esc(c.nome)}">${on?'🚩 '+on:'🏳️'}</span></td><td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
   });
   document.getElementById('contabTable').innerHTML=h+'</tbody>';
   // riga -> lavorazione (vista operativa); pallini -> menu; flag -> lavorazione note
@@ -1507,13 +1550,14 @@ function renderContabDettaglio(){
   const list=contabClientList();
   let h=`<thead><tr><th>Cliente</th><th>Regime</th><th class="center">Resp.</th>`;
   QUARTERS.forEach(q=>h+=`<th class="center">${q}</th>`);
-  h+=`<th class="center">Avanz.</th><th class="center"></th></tr></thead><tbody>`;
+  h+=`<th class="center">Avanz.</th><th class="center">Fermo da</th><th class="center"></th></tr></thead><tbody>`;
   list.forEach(c=>{
     const arr=c.contab[contabCol]; const isM=arr.length>4;
     const done=[0,1,2,3].filter(q=>colQuarterVal(arr,q)===2).length; const pc=Math.round(done/4*100);
+    const stale=daysStale(c); const staleWarn=stale!==null&&stale>=14;
     h+=`<tr><td><div class="cli-name">${clientIco(c)} ${esc(c.nome)}</div><div class="cli-meta">${esc(c.tipologia||'')}</div></td><td>${regimePill(c.regime)}</td><td class="center"><span class="muted" style="font-size:12px">${esc(c.resp||'—')}</span></td>`;
     QUARTERS.forEach((q,qi)=>{const st=colQuarterVal(arr,qi);h+=`<td class="qcell" data-cc="${esc(c.nome)}:${qi}"><span class="st s${st}">${stSym(st)}</span></td>`;});
-    h+=`<td class="center"><div class="prog"><div class="bar"><div class="fill" style="width:${pc}%;background:${progColor(pc)}"></div></div><span class="pc">${pc}%</span></div></td><td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
+    h+=`<td class="center"><div class="prog"><div class="bar"><div class="fill" style="width:${pc}%;background:${progColor(pc)}"></div></div><span class="pc">${pc}%</span></div></td><td class="center"><span class="muted" style="font-size:11.5px;${staleWarn?'color:var(--red);font-weight:700':''}">${fmtGiorni(stale)}</span></td><td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
   });
   document.getElementById('contabTable').innerHTML=h+'</tbody>';
   document.querySelectorAll('#contabTable [data-cc]').forEach(td=>td.onclick=()=>{
@@ -1563,7 +1607,7 @@ let redFilter='all',redQuery='',redRegimi=new Set();
 function setRedFilter(f){redFilter=f||'all';document.querySelectorAll('[data-rdf]').forEach(c=>c.classList.toggle('on',c.dataset.rdf===redFilter));renderRedditi();}
 function toggleRedRegime(reg){ if(redRegimi.has(reg))redRegimi.delete(reg); else redRegimi.add(reg); document.querySelectorAll('[data-rdreg]').forEach(c=>c.classList.toggle('on',redRegimi.has(c.dataset.rdreg))); renderRedditi(); }
 function renderRedditi(){
-  let list=activeClients().filter(c=>c.dichRedditi).filter(c=>{
+  let list=allClients().filter(c=>c.dichRedditi).filter(c=>{
     if(redQuery){if(!c.nome.toLowerCase().includes(redQuery.toLowerCase()))return false;}
     if(redRegimi.size>0 && !redRegimi.has(c.regime))return false;
     const pc=redProgress(c.nome);
@@ -1596,7 +1640,7 @@ function renderRedditi(){
 let cuFilter='all',cuQuery='';
 function setCuFilter(f){cuFilter=f||'all';document.querySelectorAll('[data-cuf]').forEach(c=>c.classList.toggle('on',c.dataset.cuf===cuFilter));renderCU();}
 function renderCU(){
-  let list=activeClients().filter(c=>c.sostituto).filter(c=>{
+  let list=allClients().filter(c=>c.sostituto).filter(c=>{
     if(cuQuery){if(!c.nome.toLowerCase().includes(cuQuery.toLowerCase()))return false;}
     if(cuFilter==='incompleti'&&cuProgress(c.nome)>=100)return false;
     return true;
@@ -1622,7 +1666,7 @@ function renderCU(){
 let contribFilter='all',contribQuery='';
 function setContribFilter(f){contribFilter=f||'all';document.querySelectorAll('[data-cof]').forEach(c=>c.classList.toggle('on',c.dataset.cof===contribFilter));renderContrib();}
 function renderContrib(){
-  let list=activeClients().filter(c=>c.contributiInps).filter(c=>{
+  let list=allClients().filter(c=>c.contributiInps).filter(c=>{
     if(contribQuery){if(!c.nome.toLowerCase().includes(contribQuery.toLowerCase()))return false;}
     if(contribFilter==='aperte'){const r=STATE.contrib[c.nome]||{};const open=INPS_RATE.some(rt=>(+r[rt.k]||0)!==2);if(!open)return false;}
     return true;
@@ -2239,13 +2283,13 @@ document.getElementById('btnExport').onclick=()=>{
   activeClients().forEach(c=>ivaPeriods(c).forEach(p=>iv.push([c.nome,c.liqIva,p.label,ST_LABELS[c.iva[p.key]||0]])));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(iv),'LIQ IVA');
   const rd=[['CLIENTE'].concat(RED_STEPS.map(([k,l])=>l)).concat(['% AVANZ.'])];
-  activeClients().filter(c=>c.dichRedditi).forEach(c=>{const r=STATE.redditi[c.nome]||{};rd.push([c.nome].concat(RED_STEPS.map(([k])=>ST_LABELS[+r[k]||0])).concat([redProgress(c.nome)+'%']));});
+  allClients().filter(c=>c.dichRedditi).forEach(c=>{const r=STATE.redditi[c.nome]||{};rd.push([c.nome].concat(RED_STEPS.map(([k])=>ST_LABELS[+r[k]||0])).concat([redProgress(c.nome)+'%']));});
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rd),'REDDITI');
   const cu=[['CLIENTE'].concat(CU_STEPS.map(([k,l])=>l)).concat(['ANNO'])];
-  activeClients().filter(c=>c.sostituto).forEach(c=>{const r=STATE.cu770[c.nome]||{};cu.push([c.nome].concat(CU_STEPS.map(([k])=>ST_LABELS[+r[k]||0])).concat([r.annoRif||YEAR-1]));});
+  allClients().filter(c=>c.sostituto).forEach(c=>{const r=STATE.cu770[c.nome]||{};cu.push([c.nome].concat(CU_STEPS.map(([k])=>ST_LABELS[+r[k]||0])).concat([r.annoRif||YEAR-1]));});
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cu),'CU 770');
   const co=[['CLIENTE','TIPO','IMPORTO',...INPS_RATE.map(r=>r.lab)]];
-  activeClients().filter(c=>c.contributiInps).forEach(c=>{const r=STATE.contrib[c.nome]||{};co.push([c.nome,r.tipo||'',r.importoRata||'',...INPS_RATE.map(rt=>ST_LABELS[+r[rt.k]||0])]);});
+  allClients().filter(c=>c.contributiInps).forEach(c=>{const r=STATE.contrib[c.nome]||{};co.push([c.nome,r.tipo||'',r.importoRata||'',...INPS_RATE.map(rt=>ST_LABELS[+r[rt.k]||0])]);});
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(co),'CONTRIBUTI');
   const m7=[['CONTRIBUENTE','DELEGA','ELABORAZIONE','PRONTO INVIO','INVIATO','PAGAMENTO','IMPORTO','RESP.']];
   STATE.mod730.filter(m=>m.note!=='__DELETED__').forEach(m=>m7.push([m.nome,ST_LABELS[+m.delega||0],ST_LABELS[+m.elaborazione||0],ST_LABELS[+m.prontoInvio||0],ST_LABELS[+m.inviato||0],ST_LABELS[+m.pagamento||0],m.importo||'',m.resp||'']));
@@ -2508,7 +2552,7 @@ function printIvaReport(){
 }
 /* --- stampa redditi --- */
 function printRedditiReport(){
-  const list=activeClients().filter(c=>c.dichRedditi);
+  const list=allClients().filter(c=>c.dichRedditi);
   let h=`<p>${list.length} clienti</p><table><tr><th>Cliente</th><th>Regime</th>`;
   RED_STEPS.forEach(([k,l])=>h+=`<th>${l}</th>`); h+=`<th>Avanz.</th></tr>`;
   list.forEach(c=>{const r=STATE.redditi[c.nome]||{};h+=`<tr><td>${esc(c.nome)}</td><td>${esc(c.regime)}</td>`;
@@ -2517,7 +2561,7 @@ function printRedditiReport(){
 }
 /* --- stampa CU/770 --- */
 function printCUReport(){
-  const list=activeClients().filter(c=>c.sostituto);
+  const list=allClients().filter(c=>c.sostituto);
   let h=`<p>${list.length} sostituti</p><table><tr><th>Cliente</th>`;
   CU_STEPS.forEach(([k,l])=>h+=`<th>${l}</th>`); h+=`<th>Avanz.</th></tr>`;
   list.forEach(c=>{const r=STATE.cu770[c.nome]||{};h+=`<tr><td>${esc(c.nome)}</td>`;
@@ -2526,7 +2570,7 @@ function printCUReport(){
 }
 /* --- stampa contributi --- */
 function printContribReport(){
-  const list=activeClients().filter(c=>c.contributiInps);
+  const list=allClients().filter(c=>c.contributiInps);
   let h=`<p>${list.length} clienti con contributi INPS</p><table><tr><th>Cliente</th><th>Tipo</th><th>Importo</th>`;
   INPS_RATE.forEach(r=>h+=`<th>${r.lab}</th>`); h+=`</tr>`;
   list.forEach(c=>{const r=STATE.contrib[c.nome]||{};h+=`<tr><td>${esc(c.nome)}</td><td>${esc(r.tipo||'—')}</td><td>${r.importoRata?'€ '+esc(r.importoRata):'—'}</td>`;
