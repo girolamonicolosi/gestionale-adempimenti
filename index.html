@@ -292,6 +292,22 @@ tbody tr:last-child td{border-bottom:none}
 .tile-alert{border:1.5px solid var(--brass);box-shadow:0 8px 30px -12px rgba(192,138,62,.3)}
 .tile-alert .panel-head{background:linear-gradient(180deg,var(--brass-bg),var(--panel2))}
 @media(max-width:960px){.dash-grid{grid-template-columns:1fr}}
+
+/* ===== CALENDARIO ===== */
+.cal-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:15px;flex-wrap:wrap}
+.cal-toolbar h3{font-family:var(--mono);font-weight:600;font-size:17px;min-width:170px;text-align:center;color:var(--ink)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-wd{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-faint);text-align:center;padding:4px 0}
+.cal-day{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;min-height:62px;cursor:pointer;transition:.14s}
+.cal-day:hover{border-color:var(--accent);background:var(--accent-bg)}
+.cal-day.out{opacity:.35}
+.cal-day.today .cal-num{color:var(--accent);font-weight:800}
+.cal-day.sel{background:var(--accent-bg);border-color:var(--accent);border-width:1.5px}
+.cal-day.overdue{border-color:var(--red)}
+.cal-num{font-size:13px;font-weight:700;color:var(--ink)}
+.cal-dots{display:flex;gap:4px;margin-top:7px}
+.cal-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+@media(max-width:700px){.cal-day{min-height:40px;padding:5px}.cal-num{font-size:11.5px}}
 .todo-add{display:flex;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
 .todo-add input#todoText{flex:1;min-width:240px;background:var(--bg);border:1px solid var(--line2);border-radius:10px;padding:11px 14px;font-family:var(--mono);font-size:14px;color:var(--ink)}
 .todo-add input#todoText:focus{outline:none;border-color:var(--accent)}
@@ -468,6 +484,7 @@ tbody tr:last-child td{border-bottom:none}
   <nav class="nav" id="nav">
     <button data-view="dashboard" class="on"><span class="ic">◉</span> Cruscotto</button>
     <button data-view="scadenzario"><span class="ic">◷</span> Scadenze <span class="badge hide" id="navScad">0</span></button>
+    <button data-view="calendario"><span class="ic">📅</span> Calendario</button>
     <button data-view="clienti"><span class="ic">👥</span> Clienti</button>
     <button data-view="contabilita"><span class="ic">▦</span> Contabilità</button>
     <button data-view="iva"><span class="ic">🧾</span> IVA</button>
@@ -496,28 +513,32 @@ tbody tr:last-child td{border-bottom:none}
 <section class="view on" id="view-dashboard">
   <div class="section-head"><h2>Cruscotto dello studio</h2><span class="desc" id="dashDate"></span></div>
 
-  <!-- FASCIA 1: ATTIVITÀ DA FARE (protagonista) -->
-  <div class="panel todo-panel">
-    <div class="panel-head"><h3>✔️ Cose da fare</h3><span class="count" id="todoCount">—</span></div>
-    <div class="todo-add">
-      <input id="todoText" placeholder="Nuova attività… es. richiamare il sig. Rossi per il modello F24">
-      <select id="todoAssign"><option value="">Assegna a…</option></select>
-      <select id="todoCliente"><option value="">Cliente (opz.)</option></select>
-      <button class="todo-urg" id="todoUrg" title="Segna come urgente">🔥</button>
-      <button class="btn primary" id="todoAdd">Aggiungi</button>
+  <!-- GRIGLIA A QUADRONI — cose da fare + scadenze in prima fila, alert e comunicazioni in seconda -->
+  <div class="dash-grid">
+    <div class="panel todo-panel dash-tile">
+      <div class="panel-head"><h3>✔️ Cose da fare</h3><span class="count" id="todoCount">—</span></div>
+      <div class="todo-add">
+        <input id="todoText" placeholder="Nuova attività… es. richiamare il sig. Rossi per il modello F24">
+        <select id="todoAssign"><option value="">Assegna a…</option></select>
+        <select id="todoCliente"><option value="">Cliente (opz.)</option></select>
+        <input type="date" id="todoDate" title="Data (opzionale) — se impostata compare anche nel Calendario" style="max-width:150px">
+        <button class="todo-urg" id="todoUrg" title="Segna come urgente">🔥</button>
+        <button class="btn primary" id="todoAdd">Aggiungi</button>
+      </div>
+      <div class="todo-tabs" id="todoTabs">
+        <button data-who="all" class="on">Tutte</button>
+        <button data-who="GIROLAMO">Girolamo</button>
+        <button data-who="ANTONIA">Antonia</button>
+        <button data-who="CARMEN">Carmen</button>
+        <button data-who="__none__">Non assegnate</button>
+      </div>
+      <div class="panel-body scroll" id="todoList" style="max-height:280px"></div>
     </div>
-    <div class="todo-tabs" id="todoTabs">
-      <button data-who="all" class="on">Tutte</button>
-      <button data-who="GIROLAMO">Girolamo</button>
-      <button data-who="ANTONIA">Antonia</button>
-      <button data-who="CARMEN">Carmen</button>
-      <button data-who="__none__">Non assegnate</button>
+    <div class="panel dash-tile">
+      <div class="panel-head"><h3>⏱ Prossime scadenze</h3><span class="count" id="dashScadCount">—</span></div>
+      <div class="dash-area-filter hide" id="dashAreaFilter"></div>
+      <div class="panel-body scroll" id="dashScad" style="max-height:280px"></div>
     </div>
-    <div class="panel-body scroll" id="todoList" style="max-height:340px"></div>
-  </div>
-
-  <!-- FASCIA 2: GRIGLIA A QUADRONI — alert e comunicazioni in evidenza, poi il resto -->
-  <div class="dash-grid" style="margin-top:18px">
     <div class="panel dash-tile tile-alert">
       <div class="panel-head"><h3>🚩 Richieste inevase</h3><span class="count" id="inevaseCount">—</span></div>
       <div class="panel-body scroll" id="inevaseList" style="max-height:250px"></div>
@@ -527,16 +548,11 @@ tbody tr:last-child td{border-bottom:none}
       <div class="panel-head"><h3>💬 Comunicazioni interne</h3><span class="count">Studio</span></div>
       <div class="panel-body" id="chatGeneraleMount"></div>
     </div>
-    <div class="panel dash-tile">
+    <div class="panel dash-tile" style="grid-column:1/-1">
       <div class="panel-head"><h3>⚠️ Clienti da attenzionare</h3><span class="count" id="criticiCount">—</span>
         <button class="btn" id="btnPrintCritici" style="margin-left:auto;padding:5px 9px;font-size:11px">🖨</button>
       </div>
       <div class="panel-body scroll" id="criticiList" style="max-height:280px"></div>
-    </div>
-    <div class="panel dash-tile">
-      <div class="panel-head"><h3>⏱ Prossime scadenze</h3><span class="count" id="dashScadCount">—</span></div>
-      <div class="dash-area-filter hide" id="dashAreaFilter"></div>
-      <div class="panel-body scroll" id="dashScad" style="max-height:280px"></div>
     </div>
   </div>
 </section>
@@ -559,6 +575,24 @@ tbody tr:last-child td{border-bottom:none}
     <button class="btn primary" id="btnAddScad"><span class="ic">＋</span> Scadenza</button>
   </div>
   <div class="panel"><div class="panel-body" id="scadList"></div></div>
+</section>
+
+<!-- ===== CALENDARIO ===== -->
+<section class="view" id="view-calendario">
+  <div class="section-head"><h2>Calendario</h2><span class="desc">Scadenze e attività con data, in un colpo d'occhio</span></div>
+  <div class="cal-toolbar">
+    <button class="btn" id="calPrev">◀</button>
+    <h3 id="calLabel">—</h3>
+    <button class="btn" id="calNext">▶</button>
+    <button class="btn" id="calOggi" style="margin-left:8px">Oggi</button>
+    <div class="spacer" style="flex:1"></div>
+    <div class="legend" style="margin-top:0"><span><span class="sq" style="background:var(--brass)"></span> Scadenze</span><span><span class="sq" style="background:var(--accent)"></span> Attività</span></div>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+  <div class="panel" style="margin-top:18px">
+    <div class="panel-head"><h3 id="calDetailTitle">—</h3></div>
+    <div class="panel-body" id="calDetailList"></div>
+  </div>
 </section>
 
 <!-- ===== CLIENTI ===== -->
@@ -1066,8 +1100,8 @@ function toggleNota(id){ const n=STATE.note.find(x=>x.id===id); if(!n)return; n.
 async function delNota(id){ STATE.note=STATE.note.filter(x=>x.id!==id); await api('deleteNota',{id}); }
 
 /* ---------- TASK / attività dello studio ---------- */
-async function addTask(testo,assegnatario,cliente,urgente){
-  const t={id:uid('t'),testo,assegnatario:assegnatario||'',cliente:cliente||'',urgente:urgente?'X':'',data:'',stato:0,creata:new Date().toISOString()};
+async function addTask(testo,assegnatario,cliente,urgente,data){
+  const t={id:uid('t'),testo,assegnatario:assegnatario||'',cliente:cliente||'',urgente:urgente?'X':'',data:data||'',stato:0,creata:new Date().toISOString()};
   STATE.task.push(t); await api('upsertTask',t); return t;
 }
 async function saveTask(t){ const ex=STATE.task.find(x=>x.id===t.id); if(ex)Object.assign(ex,t); else STATE.task.push(t); await api('upsertTask',t); }
@@ -1396,6 +1430,7 @@ function renderTodo(){
           <span class="who ${whoClass}">${who||'non assegnata'}</span>
           ${t.urgente&&t.stato!==2?'<span class="turg-tag">🔥 urgente</span>':''}
           ${t.cliente?`<span class="tcli" data-tcli="${esc(t.cliente)}">👤 ${esc(t.cliente)}</span>`:''}
+          ${t.data?`<span class="muted" style="font-size:11px">📅 ${fmtD(t.data)}</span>`:''}
         </div></div>
       <button class="tdel" data-tdel="${t.id}">🗑</button></div>`;
   }).join('');
@@ -1444,6 +1479,75 @@ function toggleScadDone(id){
   else{ const cs=STATE.scadenze.find(x=>x.id===id); cs.stato=(+cs.stato===2)?0:2; scheduleSave('scad:'+id,'patchScadenza',{id,stato:cs.stato}); }
   refreshAll();
 }
+
+/* ============================================================ CALENDARIO
+   Vista mensile: scadenze (sempre con data) + "cose da fare" con data
+   impostata (opzionale). Puramente di lettura/navigazione sui dati
+   gia' esistenti, nessun nuovo salvataggio oltre al campo data del task.
+============================================================ */
+const MONTH_NAMES=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const WEEKDAY_LAB=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+let calMonth=TODAY.getMonth(), calYear=TODAY.getFullYear(), calSelDate=null;
+function calDateKey(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function calGoto(delta){
+  calMonth+=delta;
+  if(calMonth<0){calMonth=11;calYear--;} else if(calMonth>11){calMonth=0;calYear++;}
+  renderCalendario();
+}
+function calGotoOggi(){ calMonth=TODAY.getMonth(); calYear=TODAY.getFullYear(); calSelDate=calDateKey(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()); renderCalendario(); }
+function calBuildIndex(){
+  const idx={};
+  allScadenze().forEach(s=>{ const k=String(s.data||'').slice(0,10); if(!k)return; (idx[k]=idx[k]||{scad:[],task:[]}).scad.push(s); });
+  taskList().forEach(t=>{ const k=String(t.data||'').slice(0,10); if(!k)return; (idx[k]=idx[k]||{scad:[],task:[]}).task.push(t); });
+  return idx;
+}
+function renderCalendario(){
+  const idx=calBuildIndex();
+  document.getElementById('calLabel').textContent=MONTH_NAMES[calMonth]+' '+calYear;
+  const first=new Date(calYear,calMonth,1);
+  const offset=(first.getDay()+6)%7; // lunedi'=0
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const prevDaysInMonth=new Date(calYear,calMonth,0).getDate();
+  const totalCells=Math.ceil((offset+daysInMonth)/7)*7;
+  const todayKey=calDateKey(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
+  let h=WEEKDAY_LAB.map(w=>`<div class="cal-wd">${w}</div>`).join('');
+  for(let i=0;i<totalCells;i++){
+    let y=calYear,m=calMonth,d,outside=false;
+    if(i<offset){ d=prevDaysInMonth-offset+i+1; m=calMonth-1; if(m<0){m=11;y--;} outside=true; }
+    else if(i>=offset+daysInMonth){ d=i-offset-daysInMonth+1; m=calMonth+1; if(m>11){m=0;y++;} outside=true; }
+    else { d=i-offset+1; }
+    const key=calDateKey(y,m,d);
+    const items=idx[key]||{scad:[],task:[]};
+    const openScad=items.scad.filter(s=>s.stato!==2).length;
+    const openTask=items.task.filter(t=>t.stato!==2).length;
+    const isToday=key===todayKey, isSel=key===calSelDate;
+    const isOverdue=openScad>0 && key<todayKey;
+    let dots='';
+    if(openScad) dots+=`<span class="cal-dot" style="background:var(--brass)" title="${openScad} scadenza/e"></span>`;
+    if(openTask) dots+=`<span class="cal-dot" style="background:var(--accent)" title="${openTask} attività"></span>`;
+    h+=`<div class="cal-day ${outside?'out':''} ${isToday?'today':''} ${isSel?'sel':''} ${isOverdue?'overdue':''}" data-cal="${key}"><div class="cal-num">${d}</div><div class="cal-dots">${dots}</div></div>`;
+  }
+  document.getElementById('calGrid').innerHTML=h;
+  document.querySelectorAll('#calGrid [data-cal]').forEach(el=>el.onclick=()=>{ calSelDate=el.dataset.cal; renderCalendario(); });
+  // dettaglio del giorno selezionato (default: oggi)
+  const sel=calSelDate||todayKey;
+  const items=idx[sel]||{scad:[],task:[]};
+  const selDate=new Date(sel+'T00:00:00');
+  document.getElementById('calDetailTitle').textContent=selDate.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  let dh='';
+  items.scad.forEach(s=>{ const done=s.stato===2; const a=areaDot(s.area);
+    dh+=`<div class="item" data-calscad="${s.id}" style="${done?'opacity:.55':''}"><span class="dot" style="background:${a.col};--db:${a.col}22"></span><div class="body"><div class="t1">${a.ic} ${esc(s.desc)}${done?' <span class=\"tag ok\">fatto</span>':''}</div><div class="t2">${esc(s.nome||'—')}${s.resp?' · 👤 '+esc(s.resp):''}</div></div></div>`;
+  });
+  items.task.forEach(t=>{ const done=t.stato===2;
+    dh+=`<div class="item" data-caltask="${t.id}" style="${done?'opacity:.55':''}"><span class="dot" style="background:var(--accent);--db:transparent"></span><div class="body"><div class="t1">${t.urgente?'🔥 ':''}${esc(t.testo)}${done?' <span class=\"tag ok\">fatto</span>':''}</div><div class="t2">${t.cliente?'👤 '+esc(t.cliente):''}${t.assegnatario?' · '+esc(t.assegnatario):''}</div></div></div>`;
+  });
+  document.getElementById('calDetailList').innerHTML=dh||emptyState('Nessuna scadenza o attività in questo giorno','📅');
+  document.querySelectorAll('#calDetailList [data-calscad]').forEach(el=>el.onclick=()=>{const s=allScadenze().find(x=>x.id===el.dataset.calscad);if(s&&!s.auto&&s.kind==='custom')openScad(s.id);else if(s)openClient(s.nome);});
+  document.querySelectorAll('#calDetailList [data-caltask]').forEach(el=>el.onclick=()=>{toggleTask(el.dataset.caltask);renderCalendario();});
+}
+document.getElementById('calPrev').onclick=()=>calGoto(-1);
+document.getElementById('calNext').onclick=()=>calGoto(1);
+document.getElementById('calOggi').onclick=calGotoOggi;
 
 /* ============================================================ CLIENTI */
 let cliFilter='all',cliQuery='';
@@ -2314,7 +2418,7 @@ document.getElementById('btnExport').onclick=()=>{
 function switchView(v){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.view===v));
   document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='view-'+v));
-  const R={dashboard:renderDashboard,scadenzario:renderScad,clienti:renderClienti,contabilita:renderContab,iva:renderIva,redditi:renderRedditi,cu770:renderCU,contributi:renderContrib,mod730:renderM730,relazioni:renderRel,alert:renderAlert,collaboratori:renderCarico};
+  const R={dashboard:renderDashboard,scadenzario:renderScad,calendario:renderCalendario,clienti:renderClienti,contabilita:renderContab,iva:renderIva,redditi:renderRedditi,cu770:renderCU,contributi:renderContrib,mod730:renderM730,relazioni:renderRel,alert:renderAlert,collaboratori:renderCarico};
   if(R[v])R[v]();
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -2377,9 +2481,11 @@ document.getElementById('scadArea').onchange=e=>{scadArea=e.target.value;renderS
     if(!txt){toast('Scrivi l\u2019attività','⚠');return;}
     const who=document.getElementById('todoAssign').value;
     const cli=document.getElementById('todoCliente').value;
-    showLoader(true);try{await addTask(txt,who,cli,todoUrgent);}finally{showLoader(false);}
+    const dt=document.getElementById('todoDate').value;
+    showLoader(true);try{await addTask(txt,who,cli,todoUrgent,dt);}finally{showLoader(false);}
     document.getElementById('todoText').value='';
     document.getElementById('todoCliente').value='';
+    document.getElementById('todoDate').value='';
     todoUrgent=false; document.getElementById('todoUrg').classList.remove('on');
     renderTodo(); toast('Attività aggiunta');
   }
@@ -2399,7 +2505,7 @@ document.getElementById('btnClearScad').onclick=async()=>{
 function refreshAll(){
   const active=document.querySelector('.nav button.on').dataset.view;
   renderDashboard();
-  const R={scadenzario:renderScad,clienti:renderClienti,contabilita:renderContab,iva:renderIva,redditi:renderRedditi,cu770:renderCU,contributi:renderContrib,mod730:renderM730,relazioni:renderRel,alert:renderAlert,collaboratori:renderCarico};
+  const R={scadenzario:renderScad,calendario:renderCalendario,clienti:renderClienti,contabilita:renderContab,iva:renderIva,redditi:renderRedditi,cu770:renderCU,contributi:renderContrib,mod730:renderM730,relazioni:renderRel,alert:renderAlert,collaboratori:renderCarico};
   if(R[active])R[active]();
 }
 
