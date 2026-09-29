@@ -188,7 +188,7 @@ tbody tr:last-child td{border-bottom:none}
 .st.s0{background:var(--bg2);color:var(--ink-faint);border-color:var(--line)}
 .st.s1{background:var(--amber-bg);color:var(--amber)}
 .st.s2{background:var(--green-bg);color:var(--green)}
-.st.s3{background:var(--red-bg);color:var(--red)}
+.st.s3{background:var(--bg2);color:var(--ink-faint)}
 .st.na{background:transparent;color:var(--line2);cursor:default}
 
 .prog{display:flex;align-items:center;gap:8px;min-width:110px}
@@ -624,7 +624,6 @@ tbody tr:last-child td{border-bottom:none}
     <div class="chip" data-conf="Semplificata">Semplificata</div>
     <div class="chip" data-conf="Ordinaria">Ordinaria</div>
     <div class="chip" data-conf="incompleti">Incompleti</div>
-    <div class="chip" data-conf="bloccati">Bloccati</div>
     <div class="spacer" style="flex:1"></div>
     <select id="contabCol" class="chip" style="display:none">
       <option value="fa">Fatture Attive</option>
@@ -742,7 +741,7 @@ tbody tr:last-child td{border-bottom:none}
 
 <!-- ===== COLLABORATORI ===== -->
 <section class="view" id="view-collaboratori">
-  <div class="section-head"><h2>Carico per collaboratore</h2><span class="desc">Chi ha in carico cosa — attività, scadenze imminenti, clienti bloccati</span>
+  <div class="section-head"><h2>Carico per collaboratore</h2><span class="desc">Chi ha in carico cosa — attività, scadenze imminenti, ore lavorate</span>
     <button class="btn" id="btnPrintCarico" style="margin-left:auto">🖨 Stampa</button>
   </div>
   <div class="tbl-wrap"><div class="tbl-scroll"><table id="caricoTable"></table></div></div>
@@ -836,6 +835,29 @@ tbody tr:last-child td{border-bottom:none}
   </div>
 </div>
 
+<!-- Sostituti di prompt()/confirm() nativi del browser: bloccati quando l'app e'
+     incorporata in un iframe (es. Google Sites), quindi tutto passa da qui. -->
+<div class="overlay" id="modalPrompt">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head"><div class="mh-ico">✎</div><div><h3 id="mpTitle">—</h3></div><button class="x" id="mpCancelX">×</button></div>
+    <div class="modal-body"><div class="fld"><input id="mpInput"></div></div>
+    <div class="modal-foot"><button class="btn" id="mpCancel">Annulla</button><button class="btn primary" id="mpOk">OK</button></div>
+  </div>
+</div>
+<div class="overlay" id="modalConfirm">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head"><div class="mh-ico">⚠️</div><div><h3>Conferma</h3></div></div>
+    <div class="modal-body"><p id="mcMsg" style="font-size:13.5px;color:var(--ink-dim);line-height:1.55"></p></div>
+    <div class="modal-foot"><button class="btn" id="mcCancel">Annulla</button><button class="btn primary" id="mcOk" style="background:var(--red);border-color:var(--red)">Conferma</button></div>
+  </div>
+</div>
+<div class="overlay" id="modalChoice">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-head"><div class="mh-ico">👤</div><div><h3 id="mchTitle">—</h3></div><button class="x" id="mchCancelX">×</button></div>
+    <div class="modal-body"><div id="mchList" style="display:flex;flex-direction:column;gap:8px"></div></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"><span class="ti">✓</span><span id="toastMsg"></span></div>
 <script>
 /* ============================================================
@@ -844,7 +866,7 @@ tbody tr:last-child td{border-bottom:none}
 const YEAR=2026;
 const QUARTERS=['Q1','Q2','Q3','Q4'];
 const MONTHS=['GEN','FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC'];
-const ST_LABELS=['Da fare','In corso','Completato','Bloccato'];
+const ST_LABELS=['Da fare','In corso','Completato','Non dovuto'];
 const NOTE_TYPES={doc:{ic:'📄',lab:'Documento mancante'},info:{ic:'ℹ️',lab:'Info mancante'},nota:{ic:'✎',lab:'Annotazione'}};
 const CONTAB_COLS={fa:'Fatture Attive',fp:'Fatture Passive',corr:'Corrispettivi',cc1:'C/C 1',cc2:'C/C 2',primanota:'Prima Nota',dip:'Dipendenti',mutui:'Mutui',locaz:'Locazioni'};
 // Responsabili dello studio
@@ -957,6 +979,52 @@ function openOperatorePicker(){
   });
   document.getElementById('modalOperatore').classList.add('on');
 }
+
+/* ---------- sostituti di prompt()/confirm()/scelta rapida, con Promise ----------
+   Necessari perche' i dialog nativi del browser vengono bloccati quando l'app
+   gira dentro un iframe (es. incorporata in Google Sites). ---------- */
+let mpResolve=null;
+function askText(title,placeholder,value){
+  return new Promise(resolve=>{
+    mpResolve=resolve;
+    document.getElementById('mpTitle').textContent=title;
+    const inp=document.getElementById('mpInput');
+    inp.placeholder=placeholder||''; inp.value=value||'';
+    document.getElementById('modalPrompt').classList.add('on');
+    setTimeout(()=>inp.focus(),50);
+  });
+}
+function mpDone(v){ document.getElementById('modalPrompt').classList.remove('on'); if(mpResolve){mpResolve(v); mpResolve=null;} }
+document.getElementById('mpOk').onclick=()=>mpDone(document.getElementById('mpInput').value.trim()||null);
+document.getElementById('mpCancel').onclick=()=>mpDone(null);
+document.getElementById('mpCancelX').onclick=()=>mpDone(null);
+document.getElementById('mpInput').onkeydown=e=>{ if(e.key==='Enter') document.getElementById('mpOk').click(); };
+
+let mcResolve=null;
+function askConfirm(msg){
+  return new Promise(resolve=>{
+    mcResolve=resolve;
+    document.getElementById('mcMsg').textContent=msg;
+    document.getElementById('modalConfirm').classList.add('on');
+  });
+}
+function mcDone(v){ document.getElementById('modalConfirm').classList.remove('on'); if(mcResolve){mcResolve(v); mcResolve=null;} }
+document.getElementById('mcOk').onclick=()=>mcDone(true);
+document.getElementById('mcCancel').onclick=()=>mcDone(false);
+
+let mchResolve=null;
+function askChoice(title,options){
+  return new Promise(resolve=>{
+    mchResolve=resolve;
+    document.getElementById('mchTitle').textContent=title;
+    const el=document.getElementById('mchList');
+    el.innerHTML=options.map(o=>`<button class="btn" data-ch="${esc(o)}" style="justify-content:center;padding:14px;font-size:14px">${esc(o)}</button>`).join('');
+    el.querySelectorAll('[data-ch]').forEach(b=>b.onclick=()=>mchDone(b.dataset.ch));
+    document.getElementById('modalChoice').classList.add('on');
+  });
+}
+function mchDone(v){ document.getElementById('modalChoice').classList.remove('on'); if(mchResolve){mchResolve(v); mchResolve=null;} }
+document.getElementById('mchCancelX').onclick=()=>mchDone(null);
 
 /* ---------- TEMPO LAVORATO PER CLIENTE (automatico) ----------
    Cronometro silenzioso: parte quando si apre la scheda di un cliente, si ferma
@@ -1228,10 +1296,12 @@ function urgClass(days){ if(days===null)return 'prossimo'; if(days<0)return 'sca
 function urgLabel(days){ if(days===null)return ''; if(days<0)return Math.abs(days)+'g fa'; if(days===0)return 'oggi'; if(days===1)return 'domani'; return 'tra '+days+'g'; }
 function regimePill(r){ const map={'Regime forfetario':['forf','Forfetario'],'Semplificata':['sempl','Semplificata'],'Ordinaria':['ord','Ordinaria'],'Agricolo':['agr','Agricolo'],'Agricolo semplificato':['agr','Agricolo S.'],'Paghe':['paghe','Paghe'],'Nessuna':['altro','—']}; const [cls,lab]=map[r]||['altro',r||'—']; return `<span class="pill ${cls}">${lab}</span>`; }
 function clientIco(c){ if(/S\.?R\.?L|S\.?P\.?A|S\.?A\.?S|S\.?N\.?C|capitali|persone/i.test((c.tipologia||'')+' '+c.nome))return '🏢'; if(/agricol/i.test((c.regime||'')+(c.tipologia||'')))return '🌾'; if(/profession/i.test(c.tipologia||''))return '👤'; return '🧾'; }
-function contabProgress(c){ const d=c.contab.fa.filter(s=>s===2).length; return Math.round(d/4*100); }
-function ivaProgress(c){ const ps=ivaPeriods(c); if(!ps.length)return null; const d=ps.filter(p=>(c.iva[p.key]||0)===2).length; return Math.round(d/ps.length*100); }
-function redProgress(nome){ const r=STATE.redditi[nome]; if(!r)return 0; const done=RED_STEPS.filter(([k])=>(+r[k]||0)===2).length; return Math.round(done/RED_STEPS.length*100); }
-function cuProgress(nome){ const r=STATE.cu770[nome]; if(!r)return 0; const done=CU_STEPS.filter(([k])=>(+r[k]||0)===2).length; return Math.round(done/CU_STEPS.length*100); }
+// Stato 3 ("Non dovuto") viene escluso dai calcoli % ovunque: segna una voce che non
+// si applica al cliente, non va contata ne' come fatta ne' come da fare.
+function contabProgress(c){ const app=c.contab.fa.filter(s=>s!==3); if(!app.length)return 100; const d=app.filter(s=>s===2).length; return Math.round(d/app.length*100); }
+function ivaProgress(c){ const ps=ivaPeriods(c); if(!ps.length)return null; const app=ps.filter(p=>(c.iva[p.key]||0)!==3); if(!app.length)return 100; const d=app.filter(p=>(c.iva[p.key]||0)===2).length; return Math.round(d/app.length*100); }
+function redProgress(nome){ const r=STATE.redditi[nome]; if(!r)return 0; const app=RED_STEPS.filter(([k])=>(+r[k]||0)!==3); if(!app.length)return 100; const done=app.filter(([k])=>(+r[k]||0)===2).length; return Math.round(done/app.length*100); }
+function cuProgress(nome){ const r=STATE.cu770[nome]; if(!r)return 0; const app=CU_STEPS.filter(([k])=>(+r[k]||0)!==3); if(!app.length)return 100; const done=app.filter(([k])=>(+r[k]||0)===2).length; return Math.round(done/app.length*100); }
 // Quali colonne contabili sono "attive" per il cliente (quelle che usa davvero).
 // Regola pragmatica: una colonna è attiva se ha almeno uno stato diverso da 0 in qualche trimestre;
 // FA/FP sono sempre considerate attive per chi tiene contabilità (regime != Nessuna/Paghe).
@@ -1243,8 +1313,9 @@ function contabActiveCols(c){
 // % completamento di UN trimestre su tutte le colonne attive (stato 2 = completato)
 function contabQuarterPct(c,q){
   const cols=contabActiveCols(c); if(!cols.length)return null;
-  const done=cols.filter(k=>colQuarterVal(c.contab[k],q)===2).length;
-  return Math.round(done/cols.length*100);
+  const app=cols.filter(k=>colQuarterVal(c.contab[k],q)!==3); if(!app.length)return null;
+  const done=app.filter(k=>colQuarterVal(c.contab[k],q)===2).length;
+  return Math.round(done/app.length*100);
 }
 // % complessiva contabilità (media dei 4 trimestri attivi)
 function contabOverallPct(c){
@@ -1252,11 +1323,9 @@ function contabOverallPct(c){
   if(!qs.length)return null;
   return Math.round(qs.reduce((a,b)=>a+b,0)/qs.length);
 }
-function contabHasBlocco(c){ return contabActiveCols(c).some(k=>c.contab[k].includes(3)); }
 function openNotes(c){ return c.notes.filter(n=>!n.done); }
 function areaBadge(area){ const a=AREE[area]||AREE.altro; return `<span class="area-badge" style="--ac:${a.col}">${a.ic} ${a.lab}</span>`; }
 function areaDot(area){ const a=AREE[area]||AREE.altro; return a; }
-function hasBlock(c){ return c.contab.fa.includes(3)||ivaPeriods(c).some(p=>(c.iva[p.key]||0)===3); }
 function stSym(s){ return ['·','◐','✓','✕'][s]; }
 function progColor(pc){ return pc>=100?'var(--green)':pc>=50?'var(--amber)':pc>0?'var(--accent)':'var(--gray)'; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
@@ -1275,7 +1344,7 @@ function waLink(c){ const n=waNumber(c); return n?('https://wa.me/'+n):''; }
 /* ============================================================
    PUNTEGGIO RISCHIO CLIENTE (0-100): rischio operativo di studio
    Pesa scadenze vicine/scadute, documenti/info mancanti, task urgenti,
-   adempimenti contabili fermi o bloccati.
+   adempimenti contabili indietro rispetto alle scadenze.
 ============================================================ */
 function clientRisk(c){
   let score=0; const motivi=[];
@@ -1296,9 +1365,8 @@ function clientRisk(c){
   const urg=tasks.filter(t=>t.urgente).length;
   if(urg){ score+=15; motivi.push(urg+' attività urgente'); }
   else if(tasks.length){ score+=6; motivi.push(tasks.length+' attività aperta'); }
-  // contabilità ferma/bloccata
-  if(contabHasBlocco(c)){ score+=15; motivi.push('lavorazione bloccata'); }
-  else { const ov=contabOverallPct(c); if(ov!==null && ov<50){ score+=10; motivi.push('contabilità indietro'); } }
+  // contabilità indietro
+  { const ov=contabOverallPct(c); if(ov!==null && ov<50){ score+=10; motivi.push('contabilità indietro'); } }
   // IVA incompleta vicino alle scadenze non la pesiamo due volte (già nelle scadenze)
   if(score>100)score=100;
   return {score, motivi};
@@ -1313,18 +1381,16 @@ function clientiCritici(){
 ============================================================ */
 function caricoCollaboratori(){
   const base={}; const who=[...RESPONSABILI,'__none__'];
-  who.forEach(w=>base[w]={attivita:0,urgenti:0,scad7:0,bloccati:new Set()});
+  who.forEach(w=>base[w]={attivita:0,urgenti:0,scad7:0});
   // attività (task)
-  taskList().filter(t=>t.stato!==2).forEach(t=>{ const k=t.assegnatario||'__none__'; if(!base[k])base[k]={attivita:0,urgenti:0,scad7:0,bloccati:new Set()}; base[k].attivita++; if(t.urgente)base[k].urgenti++; });
+  taskList().filter(t=>t.stato!==2).forEach(t=>{ const k=t.assegnatario||'__none__'; if(!base[k])base[k]={attivita:0,urgenti:0,scad7:0}; base[k].attivita++; if(t.urgente)base[k].urgenti++; });
   // scadenze entro 7gg (per responsabile della scadenza)
-  allScadenze().filter(s=>s.stato!==2).forEach(s=>{ const d=daysTo(s.data); if(d!==null&&d>=0&&d<=7){ const k=s.resp||'__none__'; if(!base[k])base[k]={attivita:0,urgenti:0,scad7:0,bloccati:new Set()}; base[k].scad7++; } });
-  // clienti bloccati (per responsabile del cliente)
-  activeClients().forEach(c=>{ if(contabHasBlocco(c)){ const k=c.resp||'__none__'; if(!base[k])base[k]={attivita:0,urgenti:0,scad7:0,bloccati:new Set()}; base[k].bloccati.add(c.nome); } });
+  allScadenze().filter(s=>s.stato!==2).forEach(s=>{ const d=daysTo(s.data); if(d!==null&&d>=0&&d<=7){ const k=s.resp||'__none__'; if(!base[k])base[k]={attivita:0,urgenti:0,scad7:0}; base[k].scad7++; } });
   return base;
 }
 let toastT;
 function toast(msg,ico='✓'){ const t=document.getElementById('toast'); document.getElementById('toastMsg').textContent=msg; t.querySelector('.ti').textContent=ico; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200); }
-function legendHTML(){ return `<span><span class="sq" style="background:var(--bg2);border:1px solid var(--line2)"></span> Da fare</span><span><span class="sq" style="background:var(--amber-bg)"></span> In corso</span><span><span class="sq" style="background:var(--green-bg)"></span> Completato</span><span><span class="sq" style="background:var(--red-bg)"></span> Bloccato</span><span class="muted">· clicca per ciclare</span>`; }
+function legendHTML(){ return `<span><span class="sq" style="background:var(--bg2);border:1px solid var(--line2)"></span> Da fare</span><span><span class="sq" style="background:var(--amber-bg)"></span> In corso</span><span><span class="sq" style="background:var(--green-bg)"></span> Completato</span><span><span class="sq" style="background:var(--bg2);border:1px solid var(--line2)"></span> Non dovuto (escluso dalle %)</span><span class="muted">· clicca per ciclare</span>`; }
 </script>
 <script>
 /* ============================================================
@@ -1609,7 +1675,6 @@ function contabClientList(){
   const list=activeClients().filter(c=>{
     if(contabQuery){if(!c.nome.toLowerCase().includes(contabQuery.toLowerCase()))return false;}
     if(contabFilter==='incompleti'){const cp=contabOverallPct(c);if(cp===null||cp>=100)return false;}
-    else if(contabFilter==='bloccati'){if(!contabHasBlocco(c))return false;}
     else if(['Regime forfetario','Semplificata','Ordinaria'].includes(contabFilter)&&c.regime!==contabFilter)return false;
     return true;
   });
@@ -1640,14 +1705,13 @@ function renderContabRiepilogo(){
   QUARTERS.forEach(q=>h+=`<th class="center">${q}</th>`);
   h+=`<th class="center">Complessivo</th><th class="center">Fermo da</th><th class="center">Richieste</th><th class="center"></th></tr></thead><tbody>`;
   list.forEach(c=>{
-    const overall=contabOverallPct(c); const on=openNotes(c).length; const cols=contabActiveCols(c);
+    const overall=contabOverallPct(c); const on=openNotes(c).length;
     const stale=daysStale(c); const staleWarn=stale!==null&&stale>=14;
     h+=`<tr data-row="${esc(c.nome)}" style="cursor:pointer"><td><div class="cli-name">${clientIco(c)} ${esc(c.nome)}</div><div class="cli-meta">${esc(c.tipologia||'')}</div></td><td>${regimePill(c.regime)}</td><td class="center"><span class="muted" style="font-size:12px">${esc(c.resp||'—')}</span></td>`;
     QUARTERS.forEach((q,i)=>{
       const pc=contabQuarterPct(c,i);
       if(pc===null){ h+=`<td class="center"><span class="muted">—</span></td>`; }
-      else { const blk=cols.some(k=>c.contab[k][i]===3);
-        h+=`<td class="center"><div class="qpct"><div class="qpct-ring" style="--p:${pc};--col:${blk?'var(--red)':progColor(pc)}"><span>${pc}</span></div></div></td>`; }
+      else { h+=`<td class="center"><div class="qpct"><div class="qpct-ring" style="--p:${pc};--col:${progColor(pc)}"><span>${pc}</span></div></div></td>`; }
     });
     h+=`<td class="center"><div class="prog"><div class="bar"><div class="fill" style="width:${overall||0}%;background:${progColor(overall||0)}"></div></div><span class="pc">${overall===null?'—':overall+'%'}</span></div></td>`;
     h+=`<td class="center"><span class="muted" style="font-size:11.5px;${staleWarn?'color:var(--red);font-weight:700':''}">${fmtGiorni(stale)}</span></td><td class="center"><span class="flag ${on?'has':''}" data-flag="${esc(c.nome)}">${on?'🚩 '+on:'🏳️'}</span></td><td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
@@ -1728,16 +1792,16 @@ function renderRedditi(){
     if(redFilter==='inviati'){const r=STATE.redditi[c.nome]||{};if((+r.inviato||0)!==2)return false;}
     return true;
   });
-  let h=`<thead><tr><th>Cliente</th><th class="center">Resp.</th>`;
+  let h=`<thead><tr><th>Cliente</th><th class="center">Resp.</th><th class="center">Avanz.</th><th class="center" title="Alert dichiarazioni">⚑</th>`;
   RED_STEPS.forEach(([k,lab])=>h+=`<th class="center" title="${lab}">${lab.length>9?lab.slice(0,8)+'…':lab}</th>`);
-  h+=`<th class="center">Avanz.</th><th class="center" title="Alert dichiarazioni">⚑</th><th class="center"></th></tr></thead><tbody>`;
+  h+=`<th class="center"></th></tr></thead><tbody>`;
   list.forEach(c=>{
     const r=STATE.redditi[c.nome]||{}; const pc=redProgress(c.nome);
     h+=`<tr data-rowcli="${esc(c.nome)}" style="cursor:pointer"><td><div class="cli-name">${clientIco(c)} ${esc(c.nome)}</div><div class="cli-meta">${esc(c.regime)}</div></td><td class="center"><span class="muted" style="font-size:12px">${esc(c.resp||'—')}</span></td>`;
-    RED_STEPS.forEach(([k])=>{const st=+r[k]||0;h+=`<td class="qcell" data-red="${esc(c.nome)}:${k}"><span class="st s${st}">${stSym(st)}</span></td>`;});
     h+=`<td class="center"><div class="prog"><div class="bar"><div class="fill" style="width:${pc}%;background:${progColor(pc)}"></div></div><span class="pc">${pc}%</span></div></td>`;
     const _rdN=STATE.note.filter(n=>n.nome===c.nome&&n.area==='dichiarazioni'&&!n.done);
     h+=`<td class="center">${_rdN.length?`<span class="red-alert-badge" data-rdalert="${esc(c.nome)}" title="${_rdN.length} segnalazion${_rdN.length===1?'e':'i'}: ${_rdN.map(n=>n.testo).join(', ').slice(0,80)}" style="cursor:pointer">⚑ ${_rdN.length}</span>`:''}</td>`;
+    RED_STEPS.forEach(([k])=>{const st=+r[k]||0;h+=`<td class="qcell" data-red="${esc(c.nome)}:${k}"><span class="st s${st}">${stSym(st)}</span></td>`;});
     h+=`<td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
   });
   document.getElementById('redTable').innerHTML=h+'</tbody>';
@@ -1826,7 +1890,7 @@ function renderM730(){
   tbl.querySelectorAll('[data-m730]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.m730.split(':');const m=STATE.mod730.find(x=>x.nome===nome);m[k]=((+m[k]||0)+1)%4;scheduleSave('mod730:'+nome+':'+k,'patchMod730',{nome,[k]:m[k]});renderM730();});
   tbl.querySelectorAll('[data-m730imp]').forEach(inp=>{inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{const m=STATE.mod730.find(x=>x.nome===inp.dataset.m730imp);m.importo=inp.value.trim();scheduleSave('mod730:'+m.nome+':importo','patchMod730',{nome:m.nome,importo:m.importo});toast('Importo salvato');};});
   tbl.querySelectorAll('[data-m730resp]').forEach(sel=>sel.onchange=()=>{const m=STATE.mod730.find(x=>x.nome===sel.dataset.m730resp);m.resp=sel.value;scheduleSave('mod730:'+m.nome+':resp','patchMod730',{nome:m.nome,resp:m.resp});toast('Responsabile salvato');});
-  tbl.querySelectorAll('[data-del730]').forEach(b=>b.onclick=async()=>{if(confirm('Eliminare il 730 di '+b.dataset.del730+'?')){showLoader(true);try{await delMod730(b.dataset.del730);}finally{showLoader(false);}renderM730();toast('Eliminato');}});
+  tbl.querySelectorAll('[data-del730]').forEach(b=>b.onclick=async()=>{if(await askConfirm('Eliminare il 730 di '+b.dataset.del730+'?')){showLoader(true);try{await delMod730(b.dataset.del730);}finally{showLoader(false);}renderM730();toast('Eliminato');}});
 }
 
 /* ============================================================ RELAZIONI */
@@ -1864,7 +1928,7 @@ function alertFiltered(){
 }
 function alertRow(a){
   const ad=areaDot(a.area);
-  return `<div class="item" style="border-left:3px solid ${ad.col};border-radius:8px;margin:2px 0"><span class="iconbtn" data-done="${a.id}">${a.done?'✅':'⬜'}</span><div class="body"><div class="t1" style="${a.done?'text-decoration:line-through;opacity:.55':''}">${NOTE_TYPES[a.tipo].ic} ${esc(a.testo)}</div><div class="t2"><span class="area-badge" style="--ac:${ad.col}">${ad.ic} ${ad.lab}</span>${a.resp?' · 👤 chiedere a '+esc(a.resp):''}${a.data?' · '+esc(a.data):''}</div></div><div class="right"><button class="iconbtn" data-gocli="${esc(a.cliente)}">⋯</button></div></div>`;
+  return `<div class="item" style="border-left:3px solid ${ad.col};border-radius:8px;margin:2px 0"><span class="iconbtn" data-done="${a.id}">${a.done?'✅':'⬜'}</span><div class="body"><div class="t1" style="${a.done?'text-decoration:line-through;opacity:.55':''}">${NOTE_TYPES[a.tipo].ic} ${esc(a.testo)}</div><div class="t2"><span class="area-badge" style="--ac:${ad.col}">${ad.ic} ${ad.lab}</span> · ${a.ico||''} ${esc(a.cliente||'—')}${a.resp?' · 👤 chiedere a '+esc(a.resp):''}${a.data?' · '+esc(a.data):''}</div></div><div class="right"><button class="iconbtn" data-gocli="${esc(a.cliente)}">⋯</button></div></div>`;
 }
 function renderAlert(){
   // popola select clienti una volta
@@ -1912,19 +1976,17 @@ function renderCarico(){
   const data=caricoCollaboratori();
   const order=[...RESPONSABILI,'__none__'];
   const d7=Date.now()-7*86400000;
-  let h=`<thead><tr><th>Collaboratore</th><th class="center">Attività aperte</th><th class="center">Urgenti</th><th class="center">Scadenze ≤7g</th><th class="center">Clienti bloccati</th><th class="center">Ore lavorate (7g)</th></tr></thead><tbody>`;
+  let h=`<thead><tr><th>Collaboratore</th><th class="center">Attività aperte</th><th class="center">Urgenti</th><th class="center">Scadenze ≤7g</th><th class="center">Ore lavorate (7g)</th></tr></thead><tbody>`;
   order.forEach(w=>{
-    const d=data[w]||{attivita:0,urgenti:0,scad7:0,bloccati:new Set()};
+    const d=data[w]||{attivita:0,urgenti:0,scad7:0};
     const nome=w==='__none__'?'⚠️ Non assegnate':w;
     const dotc=w==='__none__'?'cd-none':'cd-'+w;
-    const blocc=d.bloccati.size;
     const numCls=(n,bad)=>n===0?'carico-num zero':(bad&&n>0?'carico-num bad':'carico-num');
     const ore=w==='__none__'?0:temposOperatore(w,d7);
     h+=`<tr class="carico-row" data-carico="${w}"><td><span class="collab-pill"><span class="collab-dot ${dotc}"></span>${esc(nome)}</span></td>`+
        `<td class="center"><span class="${numCls(d.attivita)}">${d.attivita||'—'}</span></td>`+
        `<td class="center"><span class="${numCls(d.urgenti,true)}">${d.urgenti||'—'}</span></td>`+
        `<td class="center"><span class="${d.scad7>0?'carico-num warn':'carico-num zero'}">${d.scad7||'—'}</span></td>`+
-       `<td class="center"><span class="${numCls(blocc,true)}">${blocc||'—'}</span></td>`+
        `<td class="center"><span class="muted" style="font-size:12.5px">${w==='__none__'?'—':fmtOre(ore)}</span></td></tr>`;
   });
   document.getElementById('caricoTable').innerHTML=h+'</tbody>';
@@ -1936,14 +1998,11 @@ function renderCaricoDetail(){
   const nome=w==='__none__'?'Attività non assegnate':w;
   const tasks=taskList().filter(t=>t.stato!==2 && (t.assegnatario||'__none__')===w);
   const scad=allScadenze().filter(s=>s.stato!==2 && (s.resp||'__none__')===w && (()=>{const d=daysTo(s.data);return d!==null&&d>=0&&d<=7;})());
-  const blocc=activeClients().filter(c=>contabHasBlocco(c) && (c.resp||'__none__')===w);
   let h=`<div class="detail-card"><h3>👤 ${esc(nome)}</h3>`;
   h+=`<div class="detail-col-title">Attività aperte (${tasks.length})</div>`;
   h+=tasks.length?tasks.map(t=>`<div class="item"><span class="dot" style="background:${t.urgente?'var(--red)':'var(--accent)'};--db:transparent"></span><div class="body"><div class="t1">${t.urgente?'🔥 ':''}${esc(t.testo)}</div><div class="t2">${t.cliente?'👤 '+esc(t.cliente):'—'}</div></div></div>`).join(''):'<div class="muted" style="font-size:12.5px;padding:4px 0">Nessuna.</div>';
   h+=`<div class="detail-col-title">Scadenze entro 7 giorni (${scad.length})</div>`;
   h+=scad.length?scad.map(s=>{const d=daysTo(s.data);return `<div class="item"><span class="dot" style="background:var(--brass);--db:transparent"></span><div class="body"><div class="t1">${esc(s.desc)}</div><div class="t2">${esc(s.nome||'—')} · ${fmtD(s.data)}</div></div><div class="right"><span class="tag ${urgClass(d)}">${urgLabel(d)}</span></div></div>`;}).join(''):'<div class="muted" style="font-size:12.5px;padding:4px 0">Nessuna.</div>';
-  h+=`<div class="detail-col-title">Clienti con lavorazione bloccata (${blocc.length})</div>`;
-  h+=blocc.length?blocc.map(c=>`<div class="item" data-bcli="${esc(c.nome)}" style="cursor:pointer"><span class="dot" style="background:var(--red);--db:transparent"></span><div class="body"><div class="t1">${clientIco(c)} ${esc(c.nome)}</div><div class="t2">${esc(c.regime)}</div></div></div>`).join(''):'<div class="muted" style="font-size:12.5px;padding:4px 0">Nessuno.</div>';
   if(w!=='__none__'){
     const d30=Date.now()-30*86400000;
     const top=temposClientePerOperatore(w,d30).slice(0,8);
@@ -2003,14 +2062,15 @@ function renderChatContesto(targetEl, tipoContesto, contestoId, clienteId, clien
   targetEl.querySelector('.chat-send').onclick=invia;
   inp.onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); invia(); } };
   targetEl.querySelectorAll('[data-delmsg]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('Eliminare questo messaggio?'))return;
+    if(!await askConfirm('Eliminare questo messaggio?'))return;
     showLoader(true); try{ await deleteMessaggio(b.dataset.delmsg); }finally{ showLoader(false); }
     renderChatContesto(targetEl,tipoContesto,contestoId,clienteId,clienteNome);
   });
   targetEl.querySelectorAll('[data-mkask],[data-mktask]').forEach(b=>b.onclick=async()=>{
-    const chi=prompt('Assegnare l\u2019attività a chi? (GIROLAMO, ANTONIA, CARMEN)','');
+    const chi=await askChoice('Assegnare l\u2019attività a chi?',RESPONSABILI);
+    if(!chi)return;
     showLoader(true);
-    try{ await creaTaskDaMessaggio(b.dataset.mktask,(chi||'').toUpperCase().trim()); }
+    try{ await creaTaskDaMessaggio(b.dataset.mktask,chi); }
     finally{ showLoader(false); }
     toast('Attività creata dal messaggio');
     renderChatContesto(targetEl,tipoContesto,contestoId,clienteId,clienteNome);
@@ -2371,13 +2431,13 @@ document.getElementById('btnAddRel').onclick=()=>openRel(null);
 
 /* ============================================================ ADD CLIENT / 730 */
 document.getElementById('btnAddClient').onclick=async()=>{
-  const nome=prompt('Nome / Ragione sociale:'); if(!nome||!nome.trim())return;
+  const nome=await askText('Nome / Ragione sociale','Es. Rossi Mario'); if(!nome)return;
   const raw={nome:nome.trim(),tipologia:'Ditta individuale',regime:'Regime forfetario',cf:'',piva:'',email:'',pec:'',cell:'',tel:'',comune:'',liqIva:'No',inps:'',isa:'',collab:'',stato:'Attivo',socColl:'',ruolo:'',quota:'',imu:'',imuNote:'',locazioniJson:'[]',sostituto:'',contributiInps:'',dichRedditi:'',mod730:'',bilancioCamerale:'',enasarco:'',diritto_cciaa:'',inviodatiTS:'',bolloFatture:'',esterometro:'',cassaProf:'',intrastat:'',adempManualiJson:'[]',altriAdemp:''};
   STATE.clienti.push(raw); showLoader(true);try{await api('upsertCliente',raw);}finally{showLoader(false);}
   refreshAll(); openClient(raw.nome); toast('Cliente aggiunto');
 };
 document.getElementById('btnAdd730').onclick=async()=>{
-  const nome=prompt('Nome contribuente 730:'); if(!nome||!nome.trim())return;
+  const nome=await askText('Nome contribuente 730','Es. Rossi Mario'); if(!nome)return;
   const m={nome:nome.trim(),delega:0,elaborazione:0,prontoInvio:0,inviato:0,pagamento:0,importo:'',resp:'',note:''};
   showLoader(true);try{await saveMod730(m);}finally{showLoader(false);}renderM730();toast('730 aggiunto');
 };
@@ -2388,8 +2448,8 @@ document.getElementById('btnExport').onclick=()=>{
   const cl=[['CLIENTE','REGIME','TIPOLOGIA','LIQ.IVA','RESP.','P.IVA','CF','EMAIL','CELL','COMUNE','INPS','ISA','IMU','LOC./REGISTRO','SOST.IMP','REDDITI','BILANCIO']];
   allClients().forEach(c=>cl.push([c.nome,c.regime,c.tipologia,c.liqIva,c.resp,c.piva,c.cf,c.email,c.cell,c.comune,c.inps,c.isa,c.imu?'SI':'',(c.locazioni&&c.locazioni.length)?'SI':'',c.sostituto?'SI':'',c.dichRedditi?'SI':'',c.bilancioCamerale?'SI':'']));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cl),'CLIENTI');
-  const av=[['CLIENTE','REGIME','RESP.','FA Q1','Q2','Q3','Q4','FP Q1','Q2','Q3','Q4','% CONTAB','% IVA','NOTE','BLOCCATO']];
-  activeClients().forEach(c=>av.push([c.nome,c.regime,c.resp,...c.contab.fa.map(s=>ST_LABELS[s]),...c.contab.fp.map(s=>ST_LABELS[s]),contabProgress(c)+'%',ivaProgress(c)===null?'—':ivaProgress(c)+'%',openNotes(c).length,hasBlock(c)?'SI':'']));
+  const av=[['CLIENTE','REGIME','RESP.','FA Q1','Q2','Q3','Q4','FP Q1','Q2','Q3','Q4','% CONTAB','% IVA','NOTE']];
+  activeClients().forEach(c=>av.push([c.nome,c.regime,c.resp,...c.contab.fa.map(s=>ST_LABELS[s]),...c.contab.fp.map(s=>ST_LABELS[s]),contabProgress(c)+'%',ivaProgress(c)===null?'—':ivaProgress(c)+'%',openNotes(c).length]));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(av),'CONTABILITA');
   const iv=[['CLIENTE','LIQ.IVA','PERIODO','STATO']];
   activeClients().forEach(c=>ivaPeriods(c).forEach(p=>iv.push([c.nome,c.liqIva,p.label,ST_LABELS[c.iva[p.key]||0]])));
@@ -2505,7 +2565,7 @@ document.getElementById('scadArea').onchange=e=>{scadArea=e.target.value;renderS
 document.getElementById('btnClearScad').onclick=async()=>{
   const n=STATE.scadenze.length;
   if(!n){toast('Nessuna scadenza personalizzata da cancellare','ℹ️');return;}
-  if(!confirm('Cancellare tutte le '+n+' scadenze personalizzate? Le scadenze automatiche (IVA, INPS, ecc.) restano e si rigenerano dai dati dei clienti. Operazione non reversibile.'))return;
+  if(!await askConfirm('Cancellare tutte le '+n+' scadenze personalizzate? Le scadenze automatiche (IVA, INPS, ecc.) restano e si rigenerano dai dati dei clienti. Operazione non reversibile.'))return;
   showLoader(true);try{await clearAllScadenze();}finally{showLoader(false);}
   refreshAll();toast('Scadenze personalizzate azzerate');
 };
@@ -2551,7 +2611,7 @@ function printWindow(title,bodyHtml){
   w.document.close();
   setTimeout(()=>{ w.focus(); w.print(); },350);
 }
-function stt(s){ return ['Da fare','In corso','Completato','Bloccato'][s]||'—'; }
+function stt(s){ return ['Da fare','In corso','Completato','Non dovuto'][s]||'—'; }
 function printSchedaCliente(nome){
   const c=getClient(nome); if(!c)return;
   let h=`<h2>Anagrafica</h2><div class="kv">
@@ -2618,8 +2678,8 @@ function printCriticiReport(){
 }
 function printCaricoReport(){
   const data=caricoCollaboratori(); const order=[...RESPONSABILI,'__none__'];
-  let h=`<h2>Carico per collaboratore</h2><table><tr><th>Collaboratore</th><th>Attività</th><th>Urgenti</th><th>Scadenze ≤7g</th><th>Clienti bloccati</th></tr>`;
-  order.forEach(w=>{const d=data[w]||{attivita:0,urgenti:0,scad7:0,bloccati:new Set()};h+=`<tr><td>${w==='__none__'?'Non assegnate':w}</td><td>${d.attivita}</td><td>${d.urgenti}</td><td>${d.scad7}</td><td>${d.bloccati.size}</td></tr>`;});
+  let h=`<h2>Carico per collaboratore</h2><table><tr><th>Collaboratore</th><th>Attività</th><th>Urgenti</th><th>Scadenze ≤7g</th></tr>`;
+  order.forEach(w=>{const d=data[w]||{attivita:0,urgenti:0,scad7:0};h+=`<tr><td>${w==='__none__'?'Non assegnate':w}</td><td>${d.attivita}</td><td>${d.urgenti}</td><td>${d.scad7}</td></tr>`;});
   h+=`</table>`;
   printWindow('Carico collaboratori',h);
 }
