@@ -624,6 +624,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="chip" data-conf="Semplificata">Semplificata</div>
     <div class="chip" data-conf="Ordinaria">Ordinaria</div>
     <div class="chip" data-conf="incompleti">Incompleti</div>
+    <div class="chip" data-conf="alert">⚑ Con richieste</div>
     <div class="spacer" style="flex:1"></div>
     <select id="contabCol" class="chip" style="display:none">
       <option value="fa">Fatture Attive</option>
@@ -665,6 +666,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="chip on" data-rdf="all">Tutti</div>
     <div class="chip" data-rdf="incompleti">Da completare</div>
     <div class="chip" data-rdf="dainviare">Pronti per invio</div>
+    <div class="chip" data-rdf="alert">⚑ Con alert</div>
     <div class="spacer" style="flex:1"></div>
     <button class="btn" id="btnPrintRedditi">🖨 Stampa</button>
   </div>
@@ -679,6 +681,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="search"><span class="si">⌕</span><input id="cuSearch" placeholder="Cerca cliente…"></div>
     <div class="chip on" data-cuf="all">Tutti i sostituti</div>
     <div class="chip" data-cuf="incompleti">Da completare</div>
+    <div class="chip" data-cuf="alert">⚑ Con alert</div>
     <div class="spacer" style="flex:1"></div>
     <button class="btn" id="btnPrintCU">🖨 Stampa</button>
   </div>
@@ -692,6 +695,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="search"><span class="si">⌕</span><input id="contribSearch" placeholder="Cerca cliente…"></div>
     <div class="chip on" data-cof="all">Tutti</div>
     <div class="chip" data-cof="aperte">Rate aperte</div>
+    <div class="chip" data-cof="alert">⚑ Con alert</div>
     <div class="spacer" style="flex:1"></div>
     <button class="btn" id="btnPrintContrib">🖨 Stampa</button>
   </div>
@@ -1675,6 +1679,7 @@ function contabClientList(){
   const list=activeClients().filter(c=>{
     if(contabQuery){if(!c.nome.toLowerCase().includes(contabQuery.toLowerCase()))return false;}
     if(contabFilter==='incompleti'){const cp=contabOverallPct(c);if(cp===null||cp>=100)return false;}
+    else if(contabFilter==='alert'){if(!openNotes(c).length)return false;}
     else if(['Regime forfetario','Semplificata','Ordinaria'].includes(contabFilter)&&c.regime!==contabFilter)return false;
     return true;
   });
@@ -1790,6 +1795,7 @@ function renderRedditi(){
     if(redFilter==='incompleti'&&pc>=100)return false;
     if(redFilter==='dainviare'){const r=STATE.redditi[c.nome]||{};const pronto=(+r.prontoInvio||0)===2;const inv=(+r.inviato||0)===2;if(!(pronto&&!inv))return false;}
     if(redFilter==='inviati'){const r=STATE.redditi[c.nome]||{};if((+r.inviato||0)!==2)return false;}
+    if(redFilter==='alert'){if(!STATE.note.some(n=>n.nome===c.nome&&n.area==='dichiarazioni'&&!n.done))return false;}
     return true;
   });
   let h=`<thead><tr><th>Cliente</th><th class="center">Resp.</th><th class="center">Avanz.</th><th class="center" title="Alert dichiarazioni">⚑</th>`;
@@ -1819,16 +1825,19 @@ function renderCU(){
   let list=allClients().filter(c=>c.sostituto).filter(c=>{
     if(cuQuery){if(!c.nome.toLowerCase().includes(cuQuery.toLowerCase()))return false;}
     if(cuFilter==='incompleti'&&cuProgress(c.nome)>=100)return false;
+    if(cuFilter==='alert'){if(!STATE.note.some(n=>n.nome===c.nome&&n.area==='dichiarazioni'&&!n.done))return false;}
     return true;
   });
   const tbl=document.getElementById('cuTable');
   if(!list.length){tbl.innerHTML=`<tbody><tr><td>${emptyState('Nessun cliente marcato come sostituto d’imposta. Attiva la voce Sostituto d’imposta nella scheda cliente.','📋')}</td></tr></tbody>`;return;}
-  let h=`<thead><tr><th>Cliente</th><th class="center">Resp.</th>`;
+  let h=`<thead><tr><th>Cliente</th><th class="center">Resp.</th><th class="center" title="Alert dichiarazioni">⚑</th>`;
   CU_STEPS.forEach(([k,lab])=>h+=`<th class="center">${lab}</th>`);
   h+=`<th class="center">Anno rif.</th><th class="center">Avanz.</th><th class="center"></th></tr></thead><tbody>`;
   list.forEach(c=>{
     const r=STATE.cu770[c.nome]||{}; const pc=cuProgress(c.nome);
+    const _cuN=STATE.note.filter(n=>n.nome===c.nome&&n.area==='dichiarazioni'&&!n.done);
     h+=`<tr data-rowcli="${esc(c.nome)}" style="cursor:pointer"><td><div class="cli-name">${clientIco(c)} ${esc(c.nome)}</div></td><td class="center"><span class="muted" style="font-size:12px">${esc(c.resp||'—')}</span></td>`;
+    h+=`<td class="center">${_cuN.length?`<span class="red-alert-badge" data-rdalert="${esc(c.nome)}" title="${_cuN.length} segnalazion${_cuN.length===1?'e':'i'}: ${_cuN.map(n=>n.testo).join(', ').slice(0,80)}" style="cursor:pointer">⚑ ${_cuN.length}</span>`:''}</td>`;
     CU_STEPS.forEach(([k])=>{const st=+r[k]||0;h+=`<td class="qcell" data-cu="${esc(c.nome)}:${k}"><span class="st s${st}">${stSym(st)}</span></td>`;});
     h+=`<td class="center"><span class="muted">${esc(r.annoRif||(YEAR-1))}</span></td><td class="center"><div class="prog"><div class="bar"><div class="fill" style="width:${pc}%;background:${progColor(pc)}"></div></div><span class="pc">${pc}%</span></div></td><td class="center"><button class="iconbtn" data-open="${esc(c.nome)}">⋯</button></td></tr>`;
   });
@@ -1836,6 +1845,7 @@ function renderCU(){
   tbl.querySelectorAll('[data-rowcli]').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.qcell,button,input,select,a,[data-open],[data-flag],[data-contrib],[data-ctipo],[data-cimp],[data-iva],[data-ivaann],[data-openiva],[data-red],[data-cu]'))return;openLavorazione(tr.dataset.rowcli,'lavoraz');});
   tbl.querySelectorAll('[data-cu]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.cu.split(':');const r=STATE.cu770[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('cu770:'+nome+':'+k,'patchCU770',buildCU770Payload(nome,{[k]:nv}));renderCU();});
   tbl.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{e.stopPropagation();openClientMenu(b.dataset.open,e);});
+  tbl.querySelectorAll('[data-rdalert]').forEach(b=>b.onclick=e=>{e.stopPropagation();openLavorazione(b.dataset.rdalert,'note');});
 }
 
 /* ============================================================ CONTRIBUTI */
@@ -1845,16 +1855,19 @@ function renderContrib(){
   let list=allClients().filter(c=>c.contributiInps).filter(c=>{
     if(contribQuery){if(!c.nome.toLowerCase().includes(contribQuery.toLowerCase()))return false;}
     if(contribFilter==='aperte'){const r=STATE.contrib[c.nome]||{};const open=INPS_RATE.some(rt=>(+r[rt.k]||0)!==2);if(!open)return false;}
+    if(contribFilter==='alert'){if(!STATE.note.some(n=>n.nome===c.nome&&n.area==='contributi'&&!n.done))return false;}
     return true;
   });
   const tbl=document.getElementById('contribTable');
   if(!list.length){tbl.innerHTML=`<tbody><tr><td>${emptyState('Nessun cliente con contributi INPS. Attiva "Contributi INPS" nella scheda cliente.','🏦')}</td></tr></tbody>`;return;}
-  let h=`<thead><tr><th>Cliente</th><th class="center">Tipo</th><th class="center">Importo rata €</th>`;
+  let h=`<thead><tr><th>Cliente</th><th class="center" title="Alert contributi">⚑</th><th class="center">Tipo</th><th class="center">Importo rata €</th>`;
   INPS_RATE.forEach(r=>h+=`<th class="center">${r.lab}<br><span style="font-weight:400">${fmtD(r.data)}</span></th>`);
   h+=`<th class="center"></th></tr></thead><tbody>`;
   list.forEach(c=>{
     const r=STATE.contrib[c.nome]||{};
+    const _coN=STATE.note.filter(n=>n.nome===c.nome&&n.area==='contributi'&&!n.done);
     h+=`<tr data-rowcli="${esc(c.nome)}" style="cursor:pointer"><td><div class="cli-name">${clientIco(c)} ${esc(c.nome)}</div><div class="cli-meta">${esc(c.inps||'')}</div></td>
+      <td class="center">${_coN.length?`<span class="red-alert-badge" data-rdalert="${esc(c.nome)}" title="${_coN.length} segnalazion${_coN.length===1?'e':'i'}: ${_coN.map(n=>n.testo).join(', ').slice(0,80)}" style="cursor:pointer">⚑ ${_coN.length}</span>`:''}</td>
       <td class="center"><select class="mini-inp" data-ctipo="${esc(c.nome)}"><option value="" ${!r.tipo?'selected':''}>—</option><option ${r.tipo==='ART'?'selected':''}>ART</option><option ${r.tipo==='COMM'?'selected':''}>COMM</option></select></td>
       <td class="center"><input class="mini-inp" data-cimp="${esc(c.nome)}" value="${esc(r.importoRata||'')}" placeholder="0,00" style="width:90px;text-align:right"></td>`;
     INPS_RATE.forEach(rt=>{const st=+r[rt.k]||0;h+=`<td class="qcell" data-contrib="${esc(c.nome)}:${rt.k}"><span class="st s${st}">${stSym(st)}</span></td>`;});
@@ -1866,6 +1879,7 @@ function renderContrib(){
   tbl.querySelectorAll('[data-ctipo]').forEach(sel=>sel.onchange=()=>{const nome=sel.dataset.ctipo;scheduleSave('contrib:'+nome+':tipo','patchContrib',buildContribPayload(nome,{tipo:sel.value}));toast('Tipo aggiornato');});
   tbl.querySelectorAll('[data-cimp]').forEach(inp=>{inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{const nome=inp.dataset.cimp;scheduleSave('contrib:'+nome+':importoRata','patchContrib',buildContribPayload(nome,{importoRata:inp.value.trim()}));toast('Importo salvato');};});
   tbl.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{e.stopPropagation();openClientMenu(b.dataset.open,e);});
+  tbl.querySelectorAll('[data-rdalert]').forEach(b=>b.onclick=e=>{e.stopPropagation();openLavorazione(b.dataset.rdalert,'note');});
 }
 
 /* ============================================================ MOD 730 */
