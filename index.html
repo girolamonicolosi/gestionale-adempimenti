@@ -906,11 +906,11 @@ async function api(action,payload,silent){
 /* ---------- SALVATAGGIO IN BACKGROUND (ottimistico: la UI si aggiorna subito,
    il salvataggio parte in coda con debounce e riprova automaticamente in caso
    di errore di rete, senza bloccare l'interfaccia) ---------- */
-const saveQueue={}; // id -> {action,payload,timer,failed}
+const saveQueue={}; // id -> {action,payload,timer,failed,settleTimer,optimisticSettled}
 function scheduleSave(id,action,payload,delay){
   const job=saveQueue[id]||{};
-  job.action=action; job.payload=payload; job.failed=false;
-  clearTimeout(job.timer);
+  job.action=action; job.payload=payload; job.failed=false; job.optimisticSettled=false;
+  clearTimeout(job.timer); clearTimeout(job.settleTimer);
   job.timer=setTimeout(()=>{ job.timer=null; flushSave(id); }, delay===undefined?400:delay);
   saveQueue[id]=job;
   updateSyncBadge();
@@ -918,15 +918,23 @@ function scheduleSave(id,action,payload,delay){
 function flushSave(id,tries){
   tries=tries||0;
   const job=saveQueue[id]; if(!job||job.timer) return; // sostituito da un click più recente
+  if(tries===0){
+    // Apps Script puo' metterci parecchio a restituire la risposta anche quando il foglio
+    // e' gia' scritto da tempo: dopo qualche secondo il badge si acquieta comunque, il
+    // salvataggio vero e proprio (con i suoi tentativi) continua invariato in background
+    clearTimeout(job.settleTimer);
+    job.settleTimer=setTimeout(()=>{ job.optimisticSettled=true; updateSyncBadge(); },5500);
+  }
   api(job.action,job.payload,true).then(()=>{
+    clearTimeout(job.settleTimer);
     if(saveQueue[id]===job) delete saveQueue[id];
     updateSyncBadge();
   }).catch(()=>{
     if(tries<4){ setTimeout(()=>flushSave(id,tries+1), Math.min(1000*Math.pow(2,tries),10000)); }
-    else { job.failed=true; updateSyncBadge(); } // rinuncia dopo 4 tentativi: segnala errore invece di restare "in corso" per sempre
+    else { clearTimeout(job.settleTimer); job.failed=true; job.optimisticSettled=false; updateSyncBadge(); } // rinuncia dopo 4 tentativi: segnala errore invece di restare "in corso" per sempre
   });
 }
-function pendingSaveCount(){ return Object.values(saveQueue).filter(j=>j&&!j.failed).length; }
+function pendingSaveCount(){ return Object.values(saveQueue).filter(j=>j&&!j.failed&&!j.optimisticSettled).length; }
 function failedSaveCount(){ return Object.values(saveQueue).filter(j=>j&&j.failed).length; }
 function updateSyncBadge(){
   const n=pendingSaveCount(), f=failedSaveCount();
