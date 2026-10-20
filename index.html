@@ -933,9 +933,14 @@ async function api(action,payload,silent){
    il salvataggio parte in coda con debounce e riprova automaticamente in caso
    di errore di rete, senza bloccare l'interfaccia) ---------- */
 const saveQueue={}; // id -> {action,payload,timer,failed,settleTimer,optimisticSettled}
+// Una coda per ENTITA' (es. 'cu770:NOME CLIENTE'), non per singolo campo: i click ravvicinati sullo
+// stesso cliente vengono fusi in un'unica richiesta, e una nuova richiesta per la stessa entita'
+// non parte finche' la precedente e' in corso. Prima partivano richieste parallele che, su un
+// cliente senza riga, creavano righe duplicate (e al ricaricamento restava solo l'ultimo dato).
 function scheduleSave(id,action,payload,delay){
   const job=saveQueue[id]||{};
-  job.action=action; job.payload=payload; job.failed=false; job.optimisticSettled=false;
+  job.payload=(job.payload&&job.action===action&&/^patch/.test(action))?Object.assign({},job.payload,payload):payload;
+  job.action=action; job.failed=false; job.optimisticSettled=false;
   clearTimeout(job.timer); clearTimeout(job.settleTimer);
   job.timer=setTimeout(()=>{ job.timer=null; flushSave(id); }, delay===undefined?400:delay);
   saveQueue[id]=job;
@@ -944,6 +949,8 @@ function scheduleSave(id,action,payload,delay){
 function flushSave(id,tries){
   tries=tries||0;
   const job=saveQueue[id]; if(!job||job.timer) return; // sostituito da un click più recente
+  if(job.inflight){ job.rerun=true; return; } // c'e' gia' una richiesta in corso per questa entita': riparte appena finisce
+  job.inflight=true;
   if(tries===0){
     // Apps Script puo' metterci parecchio a restituire la risposta anche quando il foglio
     // e' gia' scritto da tempo: dopo qualche secondo il badge si acquieta comunque, il
@@ -952,10 +959,12 @@ function flushSave(id,tries){
     job.settleTimer=setTimeout(()=>{ job.optimisticSettled=true; updateSyncBadge(); },5500);
   }
   api(job.action,job.payload,true).then(()=>{
-    clearTimeout(job.settleTimer);
-    if(saveQueue[id]===job) delete saveQueue[id];
+    job.inflight=false; clearTimeout(job.settleTimer);
+    if(job.rerun){ job.rerun=false; flushSave(id); }
+    else if(!job.timer && saveQueue[id]===job) delete saveQueue[id];
     updateSyncBadge();
   }).catch(()=>{
+    job.inflight=false;
     if(tries<4){ setTimeout(()=>flushSave(id,tries+1), Math.min(1000*Math.pow(2,tries),10000)); }
     else { clearTimeout(job.settleTimer); job.failed=true; job.optimisticSettled=false; updateSyncBadge(); } // rinuncia dopo 4 tentativi: segnala errore invece di restare "in corso" per sempre
   });
@@ -1745,7 +1754,7 @@ function renderContabDettaglio(){
     const [nome,qi]=td.dataset.cc.split(':');const c=getClient(nome);const arr=c.contab[contabCol];
     const nv=(colQuarterVal(arr,+qi)+1)%4;
     if(arr.length>4){ [0,1,2].forEach(m=>arr[+qi*3+m]=nv); } else { arr[+qi]=nv; }
-    scheduleSave('contab:'+c.nome+':'+contabCol,'patchContab',patchContabColumn(c,contabCol));
+    scheduleSave('contab:'+c.nome,'patchContab',patchContabColumn(c,contabCol));
     renderContab();renderDashboard();
   });
   document.querySelectorAll('#contabTable [data-open]').forEach(b=>b.onclick=e=>{e.stopPropagation();openClientMenu(b.dataset.open,e);});
@@ -1813,7 +1822,7 @@ function renderRedditi(){
   document.getElementById('redTable').innerHTML=h+'</tbody>';
   document.querySelectorAll('#redTable [data-rowcli]').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.qcell,button,input,select,a,[data-open],[data-red]'))return;openLavorazione(tr.dataset.rowcli,'lavoraz');});
   document.getElementById('legendRed').innerHTML=legendHTML();
-  document.querySelectorAll('#redTable [data-red]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.red.split(':');const r=STATE.redditi[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('redditi:'+nome+':'+k,'patchRedditi',buildRedditiPayload(nome,{[k]:nv}));renderRedditi();renderDashboard();});
+  document.querySelectorAll('#redTable [data-red]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.red.split(':');const r=STATE.redditi[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('redditi:'+nome,'patchRedditi',buildRedditiPayload(nome,{[k]:nv}));renderRedditi();renderDashboard();});
   document.querySelectorAll('#redTable [data-open]').forEach(b=>b.onclick=e=>{e.stopPropagation();openClientMenu(b.dataset.open,e);});
   document.querySelectorAll('#redTable [data-rdalert]').forEach(b=>b.onclick=e=>{e.stopPropagation();openLavorazione(b.dataset.rdalert,'note');});
 }
@@ -1843,7 +1852,7 @@ function renderCU(){
   });
   tbl.innerHTML=h+'</tbody>';
   tbl.querySelectorAll('[data-rowcli]').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.qcell,button,input,select,a,[data-open],[data-flag],[data-contrib],[data-ctipo],[data-cimp],[data-iva],[data-ivaann],[data-openiva],[data-red],[data-cu]'))return;openLavorazione(tr.dataset.rowcli,'lavoraz');});
-  tbl.querySelectorAll('[data-cu]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.cu.split(':');const r=STATE.cu770[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('cu770:'+nome+':'+k,'patchCU770',buildCU770Payload(nome,{[k]:nv}));renderCU();});
+  tbl.querySelectorAll('[data-cu]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.cu.split(':');const r=STATE.cu770[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('cu770:'+nome,'patchCU770',buildCU770Payload(nome,{[k]:nv}));renderCU();});
   tbl.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{e.stopPropagation();openClientMenu(b.dataset.open,e);});
   tbl.querySelectorAll('[data-rdalert]').forEach(b=>b.onclick=e=>{e.stopPropagation();openLavorazione(b.dataset.rdalert,'note');});
 }
@@ -1875,9 +1884,9 @@ function renderContrib(){
   });
   tbl.innerHTML=h+'</tbody>';
   tbl.querySelectorAll('[data-rowcli]').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.qcell,button,input,select,a,[data-open],[data-flag],[data-contrib],[data-ctipo],[data-cimp],[data-iva],[data-ivaann],[data-openiva],[data-red],[data-cu]'))return;openLavorazione(tr.dataset.rowcli,'lavoraz');});
-  tbl.querySelectorAll('[data-contrib]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.contrib.split(':');const r=STATE.contrib[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('contrib:'+nome+':'+k,'patchContrib',buildContribPayload(nome,{[k]:nv}));renderContrib();renderDashboard();});
-  tbl.querySelectorAll('[data-ctipo]').forEach(sel=>sel.onchange=()=>{const nome=sel.dataset.ctipo;scheduleSave('contrib:'+nome+':tipo','patchContrib',buildContribPayload(nome,{tipo:sel.value}));toast('Tipo aggiornato');});
-  tbl.querySelectorAll('[data-cimp]').forEach(inp=>{inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{const nome=inp.dataset.cimp;scheduleSave('contrib:'+nome+':importoRata','patchContrib',buildContribPayload(nome,{importoRata:inp.value.trim()}));toast('Importo salvato');};});
+  tbl.querySelectorAll('[data-contrib]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.contrib.split(':');const r=STATE.contrib[nome]||{nome};const nv=((+r[k]||0)+1)%4;scheduleSave('contrib:'+nome,'patchContrib',buildContribPayload(nome,{[k]:nv}));renderContrib();renderDashboard();});
+  tbl.querySelectorAll('[data-ctipo]').forEach(sel=>sel.onchange=()=>{const nome=sel.dataset.ctipo;scheduleSave('contrib:'+nome,'patchContrib',buildContribPayload(nome,{tipo:sel.value}));toast('Tipo aggiornato');});
+  tbl.querySelectorAll('[data-cimp]').forEach(inp=>{inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{const nome=inp.dataset.cimp;scheduleSave('contrib:'+nome,'patchContrib',buildContribPayload(nome,{importoRata:inp.value.trim()}));toast('Importo salvato');};});
   tbl.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{e.stopPropagation();openClientMenu(b.dataset.open,e);});
   tbl.querySelectorAll('[data-rdalert]').forEach(b=>b.onclick=e=>{e.stopPropagation();openLavorazione(b.dataset.rdalert,'note');});
 }
@@ -1901,9 +1910,9 @@ function renderM730(){
   });
   tbl.innerHTML=h+'</tbody>';
   tbl.querySelectorAll('[data-rowcli]').forEach(tr=>tr.onclick=e=>{if(e.target.closest('.qcell,button,input,select,a,[data-open],[data-flag],[data-contrib],[data-ctipo],[data-cimp],[data-iva],[data-ivaann],[data-openiva],[data-red],[data-cu]'))return;openLavorazione(tr.dataset.rowcli,'lavoraz');});
-  tbl.querySelectorAll('[data-m730]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.m730.split(':');const m=STATE.mod730.find(x=>x.nome===nome);m[k]=((+m[k]||0)+1)%4;scheduleSave('mod730:'+nome+':'+k,'patchMod730',{nome,[k]:m[k]});renderM730();});
-  tbl.querySelectorAll('[data-m730imp]').forEach(inp=>{inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{const m=STATE.mod730.find(x=>x.nome===inp.dataset.m730imp);m.importo=inp.value.trim();scheduleSave('mod730:'+m.nome+':importo','patchMod730',{nome:m.nome,importo:m.importo});toast('Importo salvato');};});
-  tbl.querySelectorAll('[data-m730resp]').forEach(sel=>sel.onchange=()=>{const m=STATE.mod730.find(x=>x.nome===sel.dataset.m730resp);m.resp=sel.value;scheduleSave('mod730:'+m.nome+':resp','patchMod730',{nome:m.nome,resp:m.resp});toast('Responsabile salvato');});
+  tbl.querySelectorAll('[data-m730]').forEach(td=>td.onclick=()=>{const [nome,k]=td.dataset.m730.split(':');const m=STATE.mod730.find(x=>x.nome===nome);m[k]=((+m[k]||0)+1)%4;scheduleSave('mod730:'+nome,'patchMod730',{nome,[k]:m[k]});renderM730();});
+  tbl.querySelectorAll('[data-m730imp]').forEach(inp=>{inp.onclick=e=>e.stopPropagation();inp.onchange=()=>{const m=STATE.mod730.find(x=>x.nome===inp.dataset.m730imp);m.importo=inp.value.trim();scheduleSave('mod730:'+m.nome,'patchMod730',{nome:m.nome,importo:m.importo});toast('Importo salvato');};});
+  tbl.querySelectorAll('[data-m730resp]').forEach(sel=>sel.onchange=()=>{const m=STATE.mod730.find(x=>x.nome===sel.dataset.m730resp);m.resp=sel.value;scheduleSave('mod730:'+m.nome,'patchMod730',{nome:m.nome,resp:m.resp});toast('Responsabile salvato');});
   tbl.querySelectorAll('[data-del730]').forEach(b=>b.onclick=async()=>{if(await askConfirm('Eliminare il 730 di '+b.dataset.del730+'?')){showLoader(true);try{await delMod730(b.dataset.del730);}finally{showLoader(false);}renderM730();toast('Eliminato');}});
 }
 
